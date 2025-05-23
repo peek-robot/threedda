@@ -13,14 +13,13 @@ def add_objects_to_mujoco_xml(xml_file, num_objs=3, mass=0.05, size=0.03, colors
 
     # Add new cubes dynamically
     for i in range(num_objs):
-        cube = ET.Element("body", name=f"cube_{i}", pos="1.0 1.0 0.03")
+        cube = ET.Element("body", name=f"cube_{i}", pos="1.0 1.0 0.03", quat="1 0 0 0")
         ET.SubElement(cube, "inertial", pos="0 0 0", mass=f"{mass}", diaginertia="0.0002 0.0002 0.0002")
         ET.SubElement(cube, "freejoint", name=f"cube_{i}")
         color = colors[i] if colors is not None else np.random.uniform([0, 0, 0], [1, 1, 1])
         color_str = " ".join(map(str, color.tolist() + [1.0]))
         # import IPython; IPython.embed()
-        ET.SubElement(cube, "geom", name=f"cube_{i}", type="box", size=f"{size} {size} {size}",
-                        contype="1", conaffinity="1", rgba=color_str)
+        ET.SubElement(cube, "geom", name=f"cube_{i}", type="box", size=f"{size} {size} {size}", contype="1", conaffinity="1", rgba=color_str)
         # <site name="cube_0_orientation" type="ellipsoid" size="0.01 0.01 0.01" rgba="1 0 0 1" pos="0 0 0"/>
         ET.SubElement(cube, "site", name=f"cube_{i}_orientation", type="ellipsoid", size="0.01 0.01 0.01", rgba="1 0 0 1", pos="0 0 0")
         worldbody.append(cube)

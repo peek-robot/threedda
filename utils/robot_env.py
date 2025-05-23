@@ -16,6 +16,7 @@ class RobotEnv:
 
         gravity_compensation = True
         self.model.body_gravcomp[:] = float(gravity_compensation)
+        self.time_steps = time_steps
         self.model.opt.timestep = time_steps
         self.n_steps = n_steps
 
@@ -35,16 +36,10 @@ class RobotEnv:
         self.img_width = 480
         self.renderer = mujoco.Renderer(self.model, height=self.img_height, width=self.img_width)
 
-    def init_obj_poses(self):
-        for obj_qpos_id in self.obj_qpos_ids:
-            box_pos = np.random.uniform([0.4, -0.1, 0.03], [0.6, 0.1, 0.03])
-            box_euler = np.zeros(3)
-            box_euler[2] = np.random.uniform(np.pi/2, -np.pi/2)
-            box_quat = R.from_euler("xyz", box_euler, degrees=False).as_quat(scalar_first=True)
-            # box_quat = np.random.uniform([-1.0, 0.0, 0.0, -1.0], [1.0, 0.0, 0.0, 1.0])
-            self.data.qpos[
-                self.model.jnt_qposadr[obj_qpos_id] : self.model.jnt_qposadr[obj_qpos_id] + 7
-            ] = np.hstack((box_pos, box_quat))
+    def set_obj_pose(self, obj_poses):
+        for obj_qpos_id, obj_pose in zip(self.obj_qpos_ids, obj_poses):
+            self.data.qpos[self.model.jnt_qposadr[obj_qpos_id] : self.model.jnt_qposadr[obj_qpos_id] + 7] = np.hstack(obj_pose)
+        mujoco.mj_forward(self.model, self.data)
 
     def get_obj_pose(self):
         obj_poses = []
@@ -56,10 +51,10 @@ class RobotEnv:
         return self.data.qpos[self.joint_qpos_ids].astype(np.float32)
 
     def reset(self):
-        self.init_obj_poses()
         self.data.qpos[self.joint_qpos_ids] = self.reset_qpos
         self.data.qpos[self.gripper_qpos_ids] = [0.04, 0.04]
-        mujoco.mj_step(self.model, self.data, nstep=self.n_steps)
+        mujoco.mj_forward(self.model, self.data)
+        # self.step(self.reset_qpos, gripper_pos=255.0)
 
     def render(self, camera_name="front", modality="rgb"):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, camera_name)
