@@ -1,0 +1,56 @@
+<mujoco model="1a1ec1cfe633adcdebbf11b1629fc16a">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <material name="m4" specular="0.0" shininess="0.001" rgba="0.137255 0.137255 0.137255 0"/>
+    <material name="m0" specular="0.0" shininess="0.001" rgba="0.960784 0.870588 0.701961 0"/>
+    <material name="m1" specular="0.0" shininess="0.001" rgba="0.827451 0.741176 0.564706 0"/>
+    <material name="m8" specular="0.0" shininess="0.001" rgba="0.662745 0.662745 0.662745 0"/>
+    <material name="m6" specular="0.0" shininess="0.001" rgba="0.862745 0.862745 0.862745 0"/>
+    <material name="m2" specular="0.0" shininess="0.001" rgba="1 1 1 0"/>
+    <material name="m3" specular="0.0" shininess="0.001" rgba="0.752941 0.752941 0.752941 0"/>
+    <material name="m5" specular="0.0" shininess="0.001" rgba="0.780392 0.0823529 0.521569 0"/>
+    <material name="m7" specular="0.0" shininess="0.001" rgba="1 0.0784314 0.576471 0"/>
+    <material name="m9" specular="0.0" shininess="0.001" rgba="0 0 0 0"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_0.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_1.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_2.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_3.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_4.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_5.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_6.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_7.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_8.obj"/>
+    <mesh file="1a1ec1cfe633adcdebbf11b1629fc16a_9.obj"/>
+  </asset>
+  <worldbody>
+    <body name="1a1ec1cfe633adcdebbf11b1629fc16a">
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_0" material="m9" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_1" material="m7" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_2" material="m5" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_3" material="m3" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_4" material="m2" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_5" material="m6" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_6" material="m8" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_7" material="m1" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_8" material="m0" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_9" material="m4" class="visual"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_0" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_1" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_2" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_3" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_4" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_5" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_6" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_7" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_8" class="collision"/>
+      <geom mesh="1a1ec1cfe633adcdebbf11b1629fc16a_9" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

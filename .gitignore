@@ -1,0 +1,7 @@
+shapenet/
+curobo/
+gifs/
+gifs_curobo/
+__pycache__/
+*.gifs
+*.zip
