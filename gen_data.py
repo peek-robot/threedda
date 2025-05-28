@@ -84,10 +84,11 @@ def plan_motion(obj_pose, mp, qpos=None, ee_pose=None):
 
 if __name__ == "__main__":
 
-    n_episodes = 10
+    n_episodes = 36
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
 
     num_objs = 1
+    size = 0.03
 
     qpos_noise_std = 0.# 0.01
 
@@ -95,31 +96,33 @@ if __name__ == "__main__":
     root_dir = "/home/memmelma/Projects/mjctrl/franka_emika_panda"
     obj_names = [f"cube_{i}" for i in range(num_objs)]
     colors = np.random.uniform([0, 0, 0], [1, 1, 1], size=(len(obj_names), 3))
-    modified_xml = add_objects_to_mujoco_xml(os.path.join(root_dir, "scene.xml"), num_objs=num_objs, mass=0.05, size=0.03, colors=colors)
+    modified_xml = add_objects_to_mujoco_xml(os.path.join(root_dir, "scene.xml"), num_objs=num_objs, mass=0.05, size=size, colors=colors)
     with open(os.path.join(root_dir, "tmp.xml"), "w") as f:
         f.write(modified_xml)
 
     # init
     env = RobotEnv(model_path=os.path.join(root_dir, "tmp.xml"), obj_names=obj_names)
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
-    data_collector = DataCollector(env, save_dir, obs_keys=["rgb", "qpos", "obj_pose"], actions_keys=["joint_pos", "gripper_pos"])
+    data_collector = DataCollector(env, save_dir, obs_keys=["rgb", "qpos", "obj_poses"], actions_keys=["joint_pos", "gripper_pos"])
 
     for i in trange(n_episodes):
 
         # reset objects
         obj_poses = []
         for _ in range(num_objs):
-            box_pos = np.random.uniform([0.4, -0.1, 0.03], [0.6, 0.1, 0.03])
+            box_pos = np.random.uniform([0.4, -0.1, size], [0.6, 0.1, size])
             box_euler = np.zeros(3)
             box_euler[2] = np.random.uniform(np.pi/4, -np.pi/4)
             box_quat = R.from_euler("xyz", box_euler, degrees=False).as_quat(scalar_first=True)
             obj_poses.append(np.concatenate((box_pos, box_quat)))
-        env.set_obj_pose(obj_poses)
+        env.set_obj_poses(obj_poses)
+        colors = np.random.uniform([0, 0, 0], [1, 1, 1], size=(len(obj_names), 3))
+        env.set_obj_colors(colors)
 
         data_collector.reset()
 
         # get initial state
-        obj_poses = env.get_obj_pose()
+        obj_poses = env.get_obj_poses()
         obj_pos, obj_quat = obj_poses[0][:3], obj_poses[0][3:7]
         qpos = env.get_qpos()
         pos, quat = mp.compute_fk(torch.from_numpy(qpos).float().cuda())

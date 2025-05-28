@@ -2,7 +2,7 @@ import os
 import h5py
 
 class DataCollector:
-    def __init__(self, env, save_dir, obs_keys=["rgb", "qpos", "obj_pose"], actions_keys=["qpos", "gripper_pos"]):
+    def __init__(self, env, save_dir, obs_keys=["rgb", "qpos", "obj_poses"], actions_keys=["qpos", "gripper_pos"]):
         self.env = env
         self.save_dir = save_dir
         

@@ -13,7 +13,7 @@ def add_objects_to_mujoco_xml(xml_file, num_objs=3, mass=0.05, size=0.03, colors
 
     # Add new cubes dynamically
     for i in range(num_objs):
-        cube = ET.Element("body", name=f"cube_{i}", pos="1.0 1.0 0.03", quat="1 0 0 0")
+        cube = ET.Element("body", name=f"cube_{i}", pos=f"1.0 1.0 {size}", quat="1 0 0 0")
         ET.SubElement(cube, "inertial", pos="0 0 0", mass=f"{mass}", diaginertia="0.0002 0.0002 0.0002")
         ET.SubElement(cube, "freejoint", name=f"cube_{i}")
         color = colors[i] if colors is not None else np.random.uniform([0, 0, 0], [1, 1, 1])
