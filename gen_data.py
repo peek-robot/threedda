@@ -33,7 +33,7 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
         }
     else:
         start = {
-            "qpos": torch.from_numpy(qpos).float().cuda()[None] if qpos is not None else None,
+            "qpos": torch.from_numpy(qpos).float().cuda()[None]
         }
 
     traj = mp.plan_motion(start, target)
@@ -42,8 +42,9 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
     # plan retract motion
     
     start = {
-        "ee_pos": target["ee_pos"],
-        "ee_quat": target["ee_quat"],
+        # "ee_pos": target["ee_pos"],
+        # "ee_quat": target["ee_quat"],
+        "qpos": torch.from_numpy(segments[-1][-1]).float().cuda()[None]
     }
     target = {
         "ee_pos": target["ee_pos"] + torch.tensor([[0, 0, 0.2]]).cuda(),
@@ -54,10 +55,36 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
 
     return segments
 
+def plan_motion(obj_pose, mp, qpos=None, ee_pose=None):
+    
+    obj_pos, obj_quat = obj_pose
+
+    # plan pick motion
+    grasp_pos, grasp_quat = compute_grasp_pose(obj_pos, obj_quat)
+
+    target = {
+        "ee_pos": torch.from_numpy(grasp_pos).float().cuda()[None] + torch.tensor([[0, 0, 0.107]]).cuda(),
+        "ee_quat": torch.from_numpy(grasp_quat).float().cuda()[None]
+    }
+
+    if ee_pose is not None:
+        start = {
+            "ee_pos": ee_pose[0],
+            "ee_quat": ee_pose[1],
+        }
+    else:
+        start = {
+            "qpos": torch.from_numpy(qpos).float().cuda()[None] if qpos is not None else None,
+        }
+
+    traj = mp.plan_motion(start, target)
+    return traj.position.cpu().numpy()
+    
+    
 
 if __name__ == "__main__":
 
-    n_episodes = 3
+    n_episodes = 10
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
 
     num_objs = 1
@@ -99,8 +126,7 @@ if __name__ == "__main__":
 
         # plan pick motion
         segments = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
-        # segments = plan_pick_motion(ee_pose=(pos, quat), obj_pose=(obj_pos, obj_quat), mp=mp)
-
+        
         # execute
         for qpos in segments[0]:
             noise = np.random.normal(0, qpos_noise_std, size=qpos.shape)
@@ -108,7 +134,7 @@ if __name__ == "__main__":
         for qpos in segments[1]:
             noise = np.random.normal(0, qpos_noise_std, size=qpos.shape)
             data_collector.step({"joint_pos": qpos + noise, "gripper_pos": 0.0})
-        
+
         imgs = np.array(data_collector.obs["rgb"])
         imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
 
