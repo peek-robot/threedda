@@ -120,26 +120,28 @@ class CuroboWrapper:
         qpos = result.solution[0]
         return qpos
     
-    def plan_motion(self, ee_pos, ee_quat, target_ee_pos, target_ee_quat, return_ee_pose=False):
+    def plan_motion(self, start, target, return_ee_pose=False):
 
-        # start = Pose(
-        #     self.tensor_args.to_device([ee_pose[:3]]),
-        #     self.tensor_args.to_device([ee_pose[3:]]),
-        #     normalize_rotation=False,
-        # )
-
-        # result = self.ik_solver.solve_single(start)
-        # qpos = result.solution[0]
-        qpos = self.compute_ik(ee_pos, ee_quat)
-
+        if "ee_pos" in start and "ee_quat" in start:
+            ee_pos, ee_quat = start["ee_pos"], start["ee_quat"]
+            qpos = self.compute_ik(ee_pos, ee_quat)
+        elif "qpos" in start:
+            qpos = start["qpos"]
+        else:
+            raise ValueError("Invalid start state")
         start = JointState.from_position(
             qpos,
             self.kin_model.joint_names,
             # self.tensor_args.to_device([qpos]), self.kin_model.joint_names
         )
 
+        if "ee_pos" in target and "ee_quat" in target:
+            target_ee_pos, target_ee_quat = target["ee_pos"], target["ee_quat"]
+        else:
+            target_ee_pos, target_ee_quat = target
         goal = Pose(target_ee_pos, target_ee_quat, normalize_rotation=False)
-
+        
+        
         result = self.motion_gen.plan_single(
             start, goal, MotionGenPlanConfig(max_attempts=1)
         )
