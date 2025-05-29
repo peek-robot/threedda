@@ -2,7 +2,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from scipy.spatial.transform import Rotation as R
 
-def add_objects_to_mujoco_xml(xml_file, num_objs=3, mass=0.05, size=0.03, colors=None):
+def add_objects_to_mujoco_xml(xml_file, num_objs=3, mass=0.05, size=0.03, colors=None, orientation=True):
 
     # Parse XML from string
     tree = ET.parse(xml_file)
@@ -18,10 +18,9 @@ def add_objects_to_mujoco_xml(xml_file, num_objs=3, mass=0.05, size=0.03, colors
         ET.SubElement(cube, "freejoint", name=f"cube_{i}")
         color = colors[i] if colors is not None else np.random.uniform([0, 0, 0], [1, 1, 1])
         color_str = " ".join(map(str, color.tolist() + [1.0]))
-        # import IPython; IPython.embed()
         ET.SubElement(cube, "geom", name=f"cube_{i}", type="box", size=f"{size} {size} {size}", contype="1", conaffinity="1", rgba=color_str)
-        # <site name="cube_0_orientation" type="ellipsoid" size="0.01 0.01 0.01" rgba="1 0 0 1" pos="0 0 0"/>
-        ET.SubElement(cube, "site", name=f"cube_{i}_orientation", type="ellipsoid", size="0.01 0.01 0.01", rgba="1 0 0 1", pos="0 0 0")
+        if orientation:
+            ET.SubElement(cube, "site", name=f"cube_{i}_orientation", type="ellipsoid", size="0.01 0.01 0.01", rgba="1 0 0 1", pos="0 0 0")
         worldbody.append(cube)
 
     # Locate or create the keyframe section

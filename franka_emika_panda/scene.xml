@@ -10,6 +10,7 @@
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0"/>
     <global azimuth="120" elevation="-20"/>
+    <quality shadowsize="0"/>
   </visual>
 
   <asset>
@@ -20,25 +21,27 @@
 
   <worldbody>
     <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
-    <geom name="floor" pos="0.0 0.0 -0.01" size="1 1 0.01" type="plane" material="grid" contype="1" conaffinity="1"/>
-<!--     
-    <body name="cube_0" pos="1.0 1.0 0.03">
-      <inertial pos="0 0 0" mass="0.05" diaginertia="0.0002 0.0002 0.0002" />
-      <freejoint name="cube_0"/>
-      <geom name="cube_0" type="box" size=".03 .03 .03" contype="1" conaffinity="1" rgba=".6 .3 .3 1."/>
-    </body>
+    <!-- <geom name="floor" pos="0.0 0.0 -0.01" size="1 1 0.01" type="plane" material="grid" contype="1" conaffinity="1"/> -->
+    
+    <!-- <geom name='vention_table' friction='0.2 0.001 0.00001' pos='0.23 0. -0.075' euler="0 0 0" size='0.405 0.675 0.075'
+     conaffinity='1' contype='1' type='box' rgba="0.1 0.1 0.1 1" condim='3' /> -->
+     <geom name='vention_table' friction='0.2 0.001 0.00001' pos='0.3 0. -0.075' euler="0 0 0" size='0.5 0.675 0.075'
+     conaffinity='1' contype='1' type='box' rgba="0.1 0.1 0.1 1" condim='3' />
 
-    <body name="cube_1" pos="1.0 1.0 0.03">
-      <inertial pos="0 0 0" mass="0.05" diaginertia="0.0002 0.0002 0.0002" />
-      <freejoint name="cube_1"/>
-      <geom name="cube_1" type="box" size=".03 .03 .03" contype="1" conaffinity="1" rgba=".6 .3 .3 1."/>
-    </body>
+     <light name="headlight" pos="0 0 2" dir="0 0 -1" diffuse="1 1 1" specular="0.1 0.1 0.1" ambient="0.1 0.1 0.1" />
+        
+      <geom name='wall_back_left' friction='0.2 0.001 0.00001' pos='-0.6 0. 0.4' euler="0. 1.57 0." size='1. 1. 0.01'
+          conaffinity='1' contype='1' type='box' rgba="0.2 0.2 0.2 1." condim='3' />
+          
+      <geom name='wall_left' friction='0.2 0.001 0.00001' pos='0.4 1. 0.4' euler="1.57 0. 0." size='1. 1. 0.01'
+          conaffinity='1' contype='1' type='box' rgba="0.2 0.2 0.2 1." condim='3' />
 
-    <body name="cube_2" pos="1.0 1.0 0.03">
-      <inertial pos="0 0 0" mass="0.05" diaginertia="0.0002 0.0002 0.0002" />
-      <freejoint name="cube_2"/>
-      <geom name="cube_2" type="box" size=".03 .03 .03" contype="1" conaffinity="1" rgba=".6 .3 .3 1."/>
-    </body> -->
+      <geom name='wall_right' friction='0.2 0.001 0.00001' pos='0.4 -1. 0.4' euler="1.57 0. 0." size='1. 1. 0.01'
+          conaffinity='1' contype='1' type='box' rgba="0.2 0.2 0.2 1." condim='3' />
+
+    <camera name="front" pos="1.627 -0.216 0.855" xyaxes="0.161 0.987 0.000 -0.347 0.056 0.936"/>
+
+
 
   </worldbody>
 </mujoco>

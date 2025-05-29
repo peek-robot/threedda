@@ -1,5 +1,6 @@
 shapenet/
 curobo/
+robomimic_pcd/
 gifs/
 gifs_curobo/
 __pycache__/
