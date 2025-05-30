@@ -2,55 +2,52 @@ import os
 import json
 import h5py
 import numpy as np
+
+def norm_actions(actions, actions_min, actions_max):
+    return 2 * (actions - actions_min) / (actions_max - actions_min) - 1
+
+def denorm_actions(actions, actions_min, actions_max):
+    return (actions + 1) * (actions_max - actions_min) / 2 + actions_min
+
 class DataCollector:
-    def __init__(self, env, env_config, data_config, save_dir, out_file, train_valid_split, obs_keys=["rgb", "qpos", "obj_poses"]):
+    def __init__(self, env, env_config, data_config, save_dir, out_file, train_valid_split):
         self.env = env
         self.env_config = env_config
         self.data_config = data_config
         self.save_dir = save_dir
         self.train_valid_split = train_valid_split
 
-        self.obs_keys = obs_keys
-        self._reset_dicts()
-
         self.demo_idx = -1
         os.makedirs(self.save_dir, exist_ok=True)
         self.f = h5py.File(os.path.join(self.save_dir, out_file), "w")
         self.data_grp = self.f.create_group("data")
 
-    def _reset_dicts(self):
-        self.obs = {key: [] for key in self.obs_keys}
-        self.actions = []
-
-    def get_obs(self):
-        for key in self.obs_keys:
-            self.obs[key].append(getattr(self.env, f"get_{key}")())
-    
     def reset(self):
         self.demo_idx += 1
-        self.env.reset()
-        self.get_obs()
+        obs = self.env.reset()
+        # reset dicts
+        self.obs = {key: [obs[key]] for key in obs.keys()}
+        self.actions = []
 
     def step(self, action):
-
+        obs, r, done, info = self.env.step(action)
+        # update dicts
         self.actions.append(action)
-        self.env.step(action)
-        
-        self.get_obs()
+        for key in obs.keys():
+            self.obs[key].append(obs[key])
 
     def save(self):
              
         demo_grp = self.data_grp.create_group(f"demo_{self.demo_idx}")
 
         obs_grp = demo_grp.create_group("obs")
-        for key in self.obs_keys:
+        for key in self.obs.keys():
             obs_grp.create_dataset(key, data=self.obs[key][:-1])
         demo_grp.attrs.create("num_samples", len(self.obs[key][:-1]))
 
         demo_grp.create_dataset("raw_actions", data=self.actions)
 
         self.f.flush()
-        self._reset_dicts()
 
     def normalize_actions(self):
         actions = []
@@ -65,7 +62,7 @@ class DataCollector:
 
         for dk in self.data_grp.keys():
             # normalize actions to [-1., 1.]
-            actions_norm = 2 * (self.data_grp[dk]["raw_actions"][:] - actions_min) / (actions_max - actions_min) - 1
+            actions_norm = norm_actions(self.data_grp[dk]["raw_actions"][:], actions_min, actions_max)
             self.data_grp[dk].create_dataset("actions", data=actions_norm, dtype=np.float32)
 
     def close(self):

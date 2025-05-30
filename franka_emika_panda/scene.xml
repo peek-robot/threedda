@@ -40,6 +40,8 @@
           conaffinity='1' contype='1' type='box' rgba="0.2 0.2 0.2 1." condim='3' />
 
     <camera name="front" pos="1.627 -0.216 0.855" xyaxes="0.161 0.987 0.000 -0.347 0.056 0.936"/>
+    <camera name="closeup" pos="1.327 -0.216 0.655" xyaxes="0.161 0.987 0.000 -0.347 0.056 0.936"/>
+    <camera name="custom" pos="1.327 -0.216 0.655" xyaxes="0.161 0.987 0.000 -0.347 0.056 0.936"/>
 
 
 

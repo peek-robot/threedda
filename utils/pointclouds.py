@@ -30,3 +30,19 @@ def crop_points(
     if colors is not None:
         return points, colors
     return points
+
+import json
+def read_calibration_file(filename):
+
+    with open(filename) as file:
+        calib_file = json.load(file)
+
+    calib_dict = {}
+    for calib in calib_file:
+        sn = calib["camera_serial_number"]
+        calib_dict[sn] = {"intrinsic": {}, "extrinsic": {}}
+        calib_dict[sn]["intrinsic"] = calib["intrinsics"]
+        calib_dict[sn]["extrinsic"]["pos"] = calib["camera_base_pos"]
+        calib_dict[sn]["extrinsic"]["ori"] = calib["camera_base_ori"]
+
+    return calib_dict
