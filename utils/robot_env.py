@@ -244,12 +244,13 @@ class CubeEnv(RobotEnv):
             obj_poses.append(np.concatenate((box_pos, box_quat)))
         self.set_obj_poses(obj_poses)
         colors = np.random.uniform(
-            self.obj_color_dist[0], self.obj_color_dist[1], size=(self.num_objs, 3)
+            self.obj_color_dist[0], self.obj_color_dist[1], size=(self.num_objs*3)
         )
         self.set_obj_colors(colors)
 
     def set_obj_poses(self, obj_poses):
-        for obj_qpos_id, obj_pose in zip(self.obj_qpos_ids, obj_poses):
+        for i, obj_qpos_id in enumerate(self.obj_qpos_ids):
+            obj_pose = obj_poses[i*7:(i+1)*7]
             self.data.qpos[
                 self.model.jnt_qposadr[obj_qpos_id] : self.model.jnt_qposadr[
                     obj_qpos_id
@@ -259,8 +260,8 @@ class CubeEnv(RobotEnv):
         mujoco.mj_forward(self.model, self.data)
 
     def set_obj_colors(self, obj_colors):
-        for obj_geom_id, obj_color in zip(self.obj_geom_ids, obj_colors):
-            self.model.geom_rgba[obj_geom_id] = np.concatenate((obj_color, [1.0]))
+        for i, obj_geom_id in enumerate(self.obj_geom_ids):
+            self.model.geom_rgba[obj_geom_id] = np.concatenate((obj_colors[i*3:(i+1)*3], [1.0]))
         mujoco.mj_forward(self.model, self.data)
 
     def get_obj_poses(self):
@@ -274,7 +275,13 @@ class CubeEnv(RobotEnv):
                     + 7
                 ]
             )
-        return np.concatenate(obj_poses, axis=0)
+        return np.concatenate(obj_poses, axis=0, dtype=np.float32)
+
+    def get_obj_colors(self):
+        obj_colors = []
+        for obj_geom_id in self.obj_geom_ids:
+            obj_colors.append(self.model.geom_rgba[obj_geom_id][:3])
+        return np.concatenate(obj_colors, axis=0, dtype=np.float32)
 
     def generate_xml(self, xml_path, num_objs, size):
         colors = np.random.uniform([0, 0, 0], [1, 1, 1], size=(num_objs, 3))
@@ -293,6 +300,6 @@ class CubeEnv(RobotEnv):
 
     def is_success(self, task):
         if task == "pick":
-            return self.get_obj_poses()[0][2] > 0.1
+            return self.get_obj_poses()[2] > 0.1
         else:
             raise ValueError(f"Invalid task: {task}")

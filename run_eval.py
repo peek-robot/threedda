@@ -56,12 +56,14 @@ if __name__ == "__main__":
     # # ckpt_path = "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/../bc_transformer_trained_models/pcd_trans_hist/20250530104422/models/model_epoch_250.pth"
     # data_path ="/home/memmelma/Projects/robotic/gifs_curobo/pick_red_cube_100_all_closeup.hdf5"
 
-    ckpt_path = "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/../bc_transformer_trained_models/rgb_trans_rand/20250530113319/models/model_epoch_350.pth"
-    data_path = "/home/memmelma/Projects/robotic/gifs_curobo/pick_red_cube_2500_random_all.hdf5"
+    # ckpt_path = "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/../bc_transformer_trained_models/rgb_trans_rand/20250530113319/models/model_epoch_350.pth"
+    # data_path = "/home/memmelma/Projects/robotic/gifs_curobo/pick_red_cube_2500_random_all.hdf5"
 
-    ckpt_path = "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/../bc_transformer_trained_models/pcd_trans_hist/20250530115542/models/model_epoch_130.pth"
-    data_path = "/home/memmelma/Projects/robotic/gifs_curobo/pick_red_cube_100_all_closeup.hdf5"
+    ckpt_path = "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/../bc_transformer_trained_models/pcd_random_state/20250602092231/models/model_epoch_250.pth"
+    data_path = "/home/memmelma/Projects/robotic/gifs_curobo/pick_red_cube_2500_random_real_cam.hdf5"
 
+    ckpt_path = "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/../bc_transformer_trained_models/low_rand_pcd/20250602101319/models/model_epoch_100.pth"
+    data_path = "/home/memmelma/Projects/robotic/gifs_curobo/pick_red_cube_1000_low_random_real_cam.hdf5"
     save_dir = "."
 
     # load policy
@@ -69,28 +71,43 @@ if __name__ == "__main__":
     policy, ckpt_dict = FileUtils.policy_from_checkpoint(ckpt_path=ckpt_path, device=device, verbose=True)
     
     # load data
-    demo_idx = 0
     with h5py.File(data_path, "r", swmr=True) as f:
         env_config = json.loads(f["data"].attrs["env_args"])["env_kwargs"]
         action_min, action_max = f["data"].attrs["actions_min"], f["data"].attrs["actions_max"]
-        
-        if mode == "open_loop" or mode == "replay":
-            open_loop_obs = {k: v[:] for k, v in f["data"][f"demo_{demo_idx}"]["obs"].items()}
-            open_loop_actions = f["data"][f"demo_{demo_idx}"]["raw_actions"][:]
-            n_steps = open_loop_actions.shape[0] - 1
 
     # init env
-    env_config["seed"] += 1
+    # env_config["seed"] += 1
+    print("WARNING: evaluating in train env")
     env = CubeEnv(**env_config)
     
     # init framestack
     num_frames = json.loads(ckpt_dict["config"])["train"]["frame_stack"]
     framestack = FrameStackWrapper(num_frames=num_frames)
 
+    successes = []
     for i in trange(n_rollouts):
+
+        
+        # load data
+        if mode == "open_loop" or mode == "replay":
+            demo_idx = i
+            with h5py.File(data_path, "r", swmr=True) as f:
+                open_loop_obs = {k: v[:] for k, v in f["data"][f"demo_{demo_idx}"]["obs"].items()}
+                open_loop_actions = f["data"][f"demo_{demo_idx}"]["actions"][:]
+
+                obj_poses = f["data"][f"demo_{demo_idx}"]["obs"]["obj_poses"][:]
+                obj_pose = obj_poses[0]
+                obj_colors = f["data"][f"demo_{demo_idx}"]["obs"]["obj_colors"][:]
+                obj_color = obj_colors[0]
+
+                n_steps = open_loop_actions.shape[0] - 1
+
 
         # reset everything
         env.reset_objs()
+        if mode == "open_loop" or mode == "replay":
+            env.set_obj_poses(obj_pose)
+            env.set_obj_colors(obj_color)
         obs = env.reset()
         
         if mode == "open_loop":
@@ -114,18 +131,20 @@ if __name__ == "__main__":
                 act = open_loop_actions[j]
             else:
                 act = policy(ob=obs)
-
-            act_denorm = denorm_actions(act, action_min, action_max)
-            pred_actions.append(act_denorm)
+            act = denorm_actions(act, action_min, action_max)
+            pred_actions.append(act)
             
-            obs, r, done, info = env.step(act_denorm)
+            obs, r, done, info = env.step(act)
 
             if mode == "open_loop":
                 obs = {k: v[j+1] for k, v in open_loop_obs.items()}
             obs = ObsUtils.process_obs_dict(obs)
             framestack.add_obs(obs)
-        
-        if mode == "open_loop":
-            plot_actions(np.stack(pred_actions), open_loop_actions, file_name=f"img_{i}", act_dim_labels=["joint0", "joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "grasp"])
+
+        successes.append(env.is_success(task="pick"))
+        if mode == "open_loop" or mode == "replay":
+            plot_actions(np.stack(pred_actions), denorm_actions(open_loop_actions, action_min, action_max), file_name=f"img_{i}", act_dim_labels=["joint0", "joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "grasp"])
         imgs = np.array(imgs)
         imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
+
+    print(f"Success rate: {np.mean(successes)}")
