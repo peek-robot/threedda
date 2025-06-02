@@ -12,10 +12,10 @@ from utils.mp_helper import plan_pick_motion
 
 if __name__ == "__main__":
 
-    n_episodes = 2500
+    n_episodes = 5000
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
     # outfile = f"pick_red_cube_{n_episodes}_all_random_closeup.hdf5"
-    outfile = f"pick_red_cube_{n_episodes}_random_real_cam.hdf5"
+    outfile = f"pick_red_cube_{n_episodes}_low_random_real_cam.hdf5"
 
     from utils.pointclouds import read_calibration_file
     calib_file = "/home/memmelma/Projects/robotic/most_recent_calib.json"
@@ -26,13 +26,21 @@ if __name__ == "__main__":
         "xml_path": "/home/memmelma/Projects/robotic/franka_emika_panda/scene.xml",
         "num_objs": 1,
         "size": 0.03,
+        # # large randomization
+        # "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
+        # "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 4, np.pi / 4]],
+        # # medium randomization
         "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
+        "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
+        # # small randomization
+        # "obj_pos_dist": [[0.5, -0.1, 0.03], [0.6, 0.1, 0.03]],
+        # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
+        # # no randomization
         # "obj_pos_dist": [[0.5, 0.0, 0.03], [0.5, 0.0, 0.03]],
-        "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 4, np.pi / 4]],
         # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
         "obj_color_dist": [[1, 0, 0], [1, 0, 0]],
         "seed": 0,
-        "obs_keys": ["qpos", "obj_poses", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
+        "obs_keys": ["qpos", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
         
         # RobotEnv
         "camera_name": "custom",
@@ -46,7 +54,7 @@ if __name__ == "__main__":
 
     data_config = {
         "n_episodes": n_episodes,
-        "qpos_noise_std": 0.001,
+        "qpos_noise_std": 0.003,
         "train_valid_split": 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
@@ -84,8 +92,9 @@ if __name__ == "__main__":
             act = np.concatenate((qpos + noise, [0.0]))
             data_collector.step(act)
 
-        # imgs = np.array(data_collector.obs["rgb"])
-        # imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
+        if n_episodes <= 10:
+            imgs = np.array(data_collector.obs["rgb"])
+            imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
 
         data_collector.save()
 
