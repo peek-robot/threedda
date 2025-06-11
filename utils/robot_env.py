@@ -1,4 +1,5 @@
 import os
+import cv2
 
 os.environ["MUJOCO_GL"] = "egl"
 import mujoco
@@ -6,16 +7,14 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from utils.blocks import add_objects_to_mujoco_xml
-
+from utils.normalize import normalize, denormalize
 
 class RobotEnv:
-    def __init__(self, model_path, camera_name="front", img_height=256, img_width=256, calib_dict=None, n_steps=50, time_steps=0.002):
+    def __init__(self, model_path, camera_name="front", img_render=[480, 640], img_resize=None, calib_dict=None, reset_qpos_noise_std=0., n_steps=50, time_steps=0.002):
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
 
-        gravity_compensation = True
-        self.model.body_gravcomp[:] = float(gravity_compensation)
         self.time_steps = time_steps
         self.model.opt.timestep = time_steps
         self.n_steps = n_steps
@@ -51,10 +50,22 @@ class RobotEnv:
                 0.7462694,
             ]
         )
+        self.gripper_state = 1.0
+        self.reset_qpos_noise_std = reset_qpos_noise_std
+
+        # https://frankaemika.github.io/docs/control_parameters.html
+        self.min_qpos = np.array(
+            [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973],
+            dtype=np.float32,
+        )
+        self.max_qpos = np.array(
+            [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],
+            dtype=np.float32,
+        )
 
         self.camera_name = camera_name
-        self.img_height = img_height
-        self.img_width = img_width
+        self.img_render = img_render
+        self.img_resize = img_resize
         self.calib_dict = calib_dict
         
         if self.calib_dict is not None:
@@ -76,26 +87,43 @@ class RobotEnv:
                 self.set_camera_extrinsic(camera_name, R)
 
         self.renderer = mujoco.Renderer(
-            self.model, height=self.img_height, width=self.img_width
+            self.model, height=self.img_render[0], width=self.img_render[1]
         )
                 
         self.action_dimension = 7 + 1
-        
+
+    def get_gripper_state(self):
+        return np.array([self.gripper_state], dtype=np.float32)
+    
+    def get_ee_pos(self):
+        site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "ee_site")
+        return self.data.site_xpos[site_id].astype(np.float32)
+    
     def get_qpos(self):
         return self.data.qpos[self.joint_qpos_ids].astype(np.float32)
+
+    def get_qpos_normalized(self):
+        qpos = self.get_qpos()
+        return normalize(qpos, min=self.min_qpos, max=self.max_qpos)
 
     def reset(self):
         # let objects settle w/o physics
         mujoco.mj_step(self.model, self.data, nstep=self.n_steps)
         # set robot state
-        self.data.qpos[self.joint_qpos_ids] = self.reset_qpos
+        reset_qpos = self.reset_qpos + np.random.normal(0, self.reset_qpos_noise_std, size=self.reset_qpos.shape)
+        self.data.qpos[self.joint_qpos_ids] = reset_qpos
         self.data.qpos[self.gripper_qpos_ids] = [0.04, 0.04]
-        # apply robot state w/o physics
+        self.gripper_state = 1.0
+        # set velocities to zero after mj_step
+        self.data.qvel[self.joint_qpos_ids] = np.zeros(len(self.joint_qpos_ids))
+        self.data.qvel[self.gripper_qpos_ids] = np.zeros(len(self.gripper_qpos_ids))
+       # apply robot state w/o physics
         mujoco.mj_forward(self.model, self.data)
 
     def render(self, modality="rgb"):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera_name)
-        self.renderer._scene_option.frame = mujoco.mjtFrame.mjFRAME_SITE
+        # # visualize site frames
+        # self.renderer._scene_option.frame = mujoco.mjtFrame.mjFRAME_SITE
         self.renderer.update_scene(self.data, camera=cam_id)
 
         if modality == "rgb":
@@ -107,19 +135,28 @@ class RobotEnv:
             self.renderer.disable_depth_rendering()
             return depth
 
+    def resize_image(self, img):
+        img = cv2.resize(img, self.img_resize, interpolation=cv2.INTER_NEAREST)
+        return img
+    
     def get_rgb(self):
-        return self.render(modality="rgb")
+        rgb = self.render(modality="rgb")
+        if self.img_resize is not None:
+            rgb = self.resize_image(rgb)
+        return rgb
 
     def get_depth(self):
-        return (self.render(modality="depth") * 1000).astype(np.int16)
-        # return self.render(modality="depth")
+        depth = self.render(modality="depth")
+        if self.img_resize is not None:
+            depth = self.resize_image(depth)
+        return (depth * 1000).astype(np.int16)
 
     def get_points(self):
         from utils.pointclouds import depth_to_points
 
         depth = self.get_depth()
-        intrinsic = self.get_camera_intrinsic(self.camera_name)
-        extrinsic = self.get_camera_extrinsic(self.camera_name)
+        intrinsic = self.get_camera_intrinsic()
+        extrinsic = self.get_camera_extrinsic()
         points = depth_to_points(
             depth, intrinsic=intrinsic, extrinsic=extrinsic, depth_scale=1000.0
         )
@@ -129,13 +166,25 @@ class RobotEnv:
     def step(self, action):
         # Apply the action to the robot.
         self.data.ctrl[self.joint_actuator_ids] = action[:7]
-        self.data.ctrl[self.gripper_actuator_ids] = action[7]
+        self.data.ctrl[self.gripper_actuator_ids] = action[7] * 255.0
+        self.gripper_state = action[7] # 1. if action[7] > 0.5 else 0.
         mujoco.mj_step(self.model, self.data, nstep=self.n_steps)
+    
+    def adjust_intrinsics_for_resize(self, K):
+        assert self.img_render[0] == self.img_render[1] and self.img_resize[0] == self.img_resize[1]
+        K_new = K.copy()
+        scale_x = self.img_resize[1] / self.img_render[1]  # width scale
+        scale_y = self.img_resize[0] / self.img_render[0]  # height scale
+        K_new[0, 0] *= scale_x  # fx
+        K_new[1, 1] *= scale_y  # fy
+        K_new[0, 2] *= scale_x  # cx
+        K_new[1, 2] *= scale_y  # cy
+        return K_new
 
     def set_camera_intrinsic(self, camera_name, fx, fy, cx, cy, fovy):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, camera_name)
         self.model.cam_fovy[cam_id] = np.degrees(
-            2 * np.arctan(self.img_height / (2 * fy))
+            2 * np.arctan(self.img_render[0] / (2 * fy))
         )
 
     def set_camera_extrinsic(self, camera_name, R):
@@ -149,18 +198,27 @@ class RobotEnv:
 
         self.model.cam_pos[cam_id] = cam_base_pos
         from scipy.spatial.transform import Rotation as Rot
-        self.model.cam_quat[cam_id] = Rot.from_matrix(cam_base_ori @ camera_axis_correction).as_quat(scalar_first=True)
+        try:
+            self.model.cam_quat[cam_id] = Rot.from_matrix(cam_base_ori @ camera_axis_correction).as_quat(scalar_first=True)
+        except:
+            # old scipy version defaults to scalar_first=False
+            quat = Rot.from_matrix(cam_base_ori @ camera_axis_correction).as_quat()
+            quat = np.array([quat[3], quat[0], quat[1], quat[2]])
+            self.model.cam_quat[cam_id] = quat
 
     def get_camera_intrinsic(self):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera_name)
         fovy = self.model.cam_fovy[cam_id]
 
-        fy = self.img_height / (2 * np.tan(np.radians(fovy / 2)))
+        fy = self.img_render[0] / (2 * np.tan(np.radians(fovy / 2)))
         fx = fy
-        cx = self.img_width / 2
-        cy = self.img_height / 2
+        cx = self.img_render[1] / 2
+        cy = self.img_render[0] / 2
 
         K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
+
+        if self.img_resize is not None:
+            K = self.adjust_intrinsics_for_resize(K)
         return K
 
     def get_camera_extrinsic(self):
@@ -238,9 +296,14 @@ class CubeEnv(RobotEnv):
             box_euler[2] = np.random.uniform(
                 self.obj_ori_dist[2][0], self.obj_ori_dist[2][1]
             )
-            box_quat = R.from_euler("xyz", box_euler, degrees=False).as_quat(
-                scalar_first=True
-            )
+            try:
+                box_quat = R.from_euler("xyz", box_euler, degrees=False).as_quat(
+                    scalar_first=True
+                )
+            except:
+                # old scipy version defaults to scalar_first=False
+                box_quat = R.from_euler("xyz", box_euler, degrees=False).as_quat()
+                box_quat = np.array([box_quat[3], box_quat[0], box_quat[1], box_quat[2]])
             obj_poses.append(np.concatenate((box_pos, box_quat)))
         self.set_obj_poses(obj_poses)
         colors = np.random.uniform(
