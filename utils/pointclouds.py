@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 def depth_to_points(depth, intrinsic, extrinsic, depth_scale=1000.0):
     height, width = depth.shape[:2]
@@ -13,23 +14,18 @@ def depth_to_points(depth, intrinsic, extrinsic, depth_scale=1000.0):
     points = points[:, :3]
     return points
 
-def crop_points(
-    points, colors=None, crop_min=[-1.0, -1.0, -0.2], crop_max=[1.0, 1.0, 1.0]
-):
+def zero_points(points, colors=None, crop_min=[-1.0, -1.0, -0.2], crop_max=[1.0, 1.0, 1.0]):
+    crop_min = torch.tensor(crop_min, device=points.device).view(1, 1, 3)
+    crop_max = torch.tensor(crop_max, device=points.device).view(1, 1, 3)
 
-    idx_max = np.all((points < crop_max), axis=1)
-    points = points[idx_max]
-    if colors is not None:
-        colors = colors[idx_max]
+    mask_min = (points > crop_min).all(dim=-1)
+    mask_max = (points < crop_max).all(dim=-1)
+    valid_mask = mask_min & mask_max
 
-    idx_min = np.all((points > crop_min), axis=1)
-    points = points[idx_min]
+    points[~valid_mask] = 0.
     if colors is not None:
-        colors = colors[idx_min]
-
-    if colors is not None:
-        return points, colors
-    return points
+        colors[~valid_mask] = 0.
+    return points, colors
 
 import json
 def read_calibration_file(filename):
