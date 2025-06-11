@@ -51,7 +51,7 @@ class FrameStackWrapper:
         # concatenate all frames per key so we return a numpy array per key
         if self.num_frames == 1:
             return {
-                k: np.concatenate(self.obs_history[k], axis=0)[0]
+                k: np.concatenate(self.obs_history[k], axis=0)[:1]
                 for k in self.obs_history
             }
         else:

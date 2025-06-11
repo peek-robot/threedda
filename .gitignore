@@ -3,6 +3,8 @@ curobo/
 robomimic_pcd/
 gifs/
 gifs_curobo/
+wandb/
+results/
 __pycache__/
 *.gifs
 *.zip

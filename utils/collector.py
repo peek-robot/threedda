@@ -3,11 +3,7 @@ import json
 import h5py
 import numpy as np
 
-def norm_actions(actions, actions_min, actions_max):
-    return 2 * (actions - actions_min) / (actions_max - actions_min) - 1
-
-def denorm_actions(actions, actions_min, actions_max):
-    return (actions + 1) * (actions_max - actions_min) / 2 + actions_min
+from utils.normalize import normalize
 
 class DataCollector:
     def __init__(self, env, env_config, data_config, save_dir, out_file, train_valid_split):
@@ -45,27 +41,52 @@ class DataCollector:
             obs_grp.create_dataset(key, data=self.obs[key][:-1])
         demo_grp.attrs.create("num_samples", len(self.obs[key][:-1]))
 
-        demo_grp.create_dataset("raw_actions", data=self.actions)
+        demo_grp.create_dataset("actions_raw", data=self.actions)
 
         self.f.flush()
 
     def normalize_actions(self):
         actions = []
         for dk in self.data_grp.keys():
-            actions.append(self.data_grp[dk]["raw_actions"][:])
+            actions.append(self.data_grp[dk]["actions_raw"][:])
         actions = np.concatenate(actions, axis=0)
 
-        actions_min = np.min(actions, axis=0)
-        actions_max = np.max(actions, axis=0)
+        actions_min = np.concatenate([self.env.min_qpos, [0.]]) #np.min(actions, axis=0)
+        actions_max = np.concatenate([self.env.max_qpos, [1.]]) # np.max(actions, axis=0)
         self.data_grp.attrs.create("actions_min", actions_min)
         self.data_grp.attrs.create("actions_max", actions_max)
 
         for dk in self.data_grp.keys():
             # normalize actions to [-1., 1.]
-            actions_norm = norm_actions(self.data_grp[dk]["raw_actions"][:], actions_min, actions_max)
-            self.data_grp[dk].create_dataset("actions", data=actions_norm, dtype=np.float32)
+            actions_normalized = normalize(self.data_grp[dk]["actions_raw"][:], min=actions_min, max=actions_max)
+            self.data_grp[dk].create_dataset("actions", data=actions_normalized, dtype=np.float32)
+    
+    def compute_paths(self):
+        from utils.paths import generate_path_2d_from_obs, add_path_2d_to_img, smooth_path_rdp, scale_path
+        for dk in self.data_grp.keys():
+            path = generate_path_2d_from_obs(self.data_grp[dk]["obs"])
+            # TODO dynamically set resolution
+            path = scale_path(path, min_in=0., max_in=224., min_out=0., max_out=1.)
+            path = smooth_path_rdp(path, tolerance=0.05)
+            path = scale_path(path, min_in=0., max_in=1., min_out=0., max_out=224.).astype(np.int32)
+
+            # store path as 2d image
+            path_imgs = np.stack([add_path_2d_to_img(im, path) for im in self.data_grp[dk]["obs"]["rgb"]], axis=0)
+            self.data_grp[dk]["obs"].create_dataset("path_img", data=path_imgs, dtype=np.uint8)
+
+            # path shape (N, 2) pad N with zeros until N=P
+            path_pad = np.pad(path, ((0, 127 - path.shape[1]), (0, 0)), mode="constant", constant_values=(0))
+            # add batch dim (B, P, 2)
+            path_pad = np.repeat(path_pad[None], self.data_grp[dk].attrs["num_samples"], axis=0)
+            # store raw path
+            self.data_grp[dk]["obs"].create_dataset("path", data=path_pad, dtype=np.float32)
+            
+            # import matplotlib.pyplot as plt
+            # plt.imsave(f"path_img_{dk}.png", path_imgs[0])
+            # import IPython; IPython.embed()
 
     def close(self):
+        self.compute_paths()
         self.normalize_actions()
 
         mask_grp = self.f.create_group("mask")

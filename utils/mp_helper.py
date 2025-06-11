@@ -41,7 +41,8 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
         "ee_quat": target["ee_quat"],
     }
     traj = mp.plan_motion(start, target)
-    segments.append(traj.position.cpu().numpy())
+    # first two steps equal to start
+    segments.append(traj.position.cpu().numpy()[2:])
 
     return segments
 
