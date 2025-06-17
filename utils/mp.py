@@ -23,8 +23,7 @@ from curobo.wrap.reacher.motion_gen import (
 )
 from curobo.geom.types import WorldConfig
 from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
-
-
+    
 class CuroboWrapper:
 
     def __init__(
@@ -32,6 +31,9 @@ class CuroboWrapper:
         device=None,
         robot_file="franka.yml",
         world_file="collision_table.yml",
+        ik_solver=False,
+        fk_solver=False,
+        mp_solver=True,
         interpolation_dt=0.1,
         random_obstacle=False,
     ):
@@ -68,47 +70,50 @@ class CuroboWrapper:
             world_cfg.add_obstacle(obstacle_0)
 
         # MP
-        motion_gen_config = MotionGenConfig.load_from_robot_config(
-            robot_cfg,
-            world_cfg,
-            self.tensor_args,
-            interpolation_dt=self.interpolation_dt,
-            # # Zoey params
-            # trajopt_tsteps=50,
-            # interpolation_steps=10000,
-            # rotation_threshold=0.01,
-            # position_threshold=0.001,
-            # num_ik_seeds=100,
-            # num_trajopt_seeds=50,
-            # collision_checker_type=CollisionCheckerType.PRIMITIVE,
-            # grad_trajopt_iters=500,
-            # trajopt_dt=0.5,
-            # evaluate_interpolated_trajectory=True,
-            # js_trajopt_dt=0.5,
-            # js_trajopt_tsteps=34,
-            # velocity_scale=[0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.5, 0.5]
-        )
-        self.motion_gen = MotionGen(motion_gen_config)
-        self.motion_gen.warmup(enable_graph=True)
+        if mp_solver:
+            motion_gen_config = MotionGenConfig.load_from_robot_config(
+                robot_cfg,
+                world_cfg,
+                self.tensor_args,
+                interpolation_dt=self.interpolation_dt,
+                # # Zoey params
+                # trajopt_tsteps=50,
+                # interpolation_steps=10000,
+                # rotation_threshold=0.01,
+                # position_threshold=0.001,
+                # num_ik_seeds=100,
+                # num_trajopt_seeds=50,
+                # collision_checker_type=CollisionCheckerType.PRIMITIVE,
+                # grad_trajopt_iters=500,
+                # trajopt_dt=0.5,
+                # evaluate_interpolated_trajectory=True,
+                # js_trajopt_dt=0.5,
+                # js_trajopt_tsteps=34,
+                # velocity_scale=[0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.5, 0.5]
+            )
+            self.motion_gen = MotionGen(motion_gen_config)
+            self.motion_gen.warmup(enable_graph=True)
+
+            self.retract_cfg = self.motion_gen.get_retract_config()
 
         # FK
-        self.kin_model = CudaRobotModel(robot_cfg.kinematics)
+        if fk_solver or mp_solver:
+            self.kin_model = CudaRobotModel(robot_cfg.kinematics)
 
         # IK
-        ik_config = IKSolverConfig.load_from_robot_config(
-            robot_cfg,
-            world_cfg,
-            rotation_threshold=0.05,
-            position_threshold=0.005,
-            num_seeds=20,
-            self_collision_check=True,
-            self_collision_opt=True,
-            tensor_args=self.tensor_args,
-            use_cuda_graph=True,
-        )
-        self.ik_solver = IKSolver(ik_config)
-
-        self.retract_cfg = self.motion_gen.get_retract_config()
+        if ik_solver or mp_solver:
+            ik_config = IKSolverConfig.load_from_robot_config(
+                robot_cfg,
+                world_cfg,
+                rotation_threshold=5e-2, # 0.05,
+                position_threshold=5e-3, # 0.005,
+                num_seeds=250,
+                self_collision_check=True,
+                self_collision_opt=True,
+                tensor_args=self.tensor_args,
+                use_cuda_graph=True,
+            )
+            self.ik_solver = IKSolver(ik_config)
 
     def compute_fk(self, qpos):
         pos, quat, _, _, _, _, _ = self.kin_model.forward(qpos)
