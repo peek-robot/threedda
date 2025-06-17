@@ -72,8 +72,23 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
     traj = mp.plan_motion(start, target)
     segments.append(traj.position.cpu().numpy())
 
-    # plan retract motion
+    # plan pre-place motion
+    start = {
+        # "ee_pos": target["ee_pos"],
+        # "ee_quat": target["ee_quat"],
+        "qpos": torch.from_numpy(segments[-1][-1])
+        .float()
+        .cuda()[None]
+    }
+    target = {
+        "ee_pos": torch.from_numpy(place_pos).float().cuda()[None]
+        + torch.tensor([[0, 0, 0.107 + 0.1]]).cuda(),
+        "ee_quat": torch.from_numpy(grasp_quat).float().cuda()[None],
+    }
+    traj = mp.plan_motion(start, target)
+    segments.append(traj.position.cpu().numpy())
 
+    # plan retract motion
     start = {
         # "ee_pos": target["ee_pos"],
         # "ee_quat": target["ee_quat"],
