@@ -26,9 +26,12 @@ class DataCollector:
         self.actions = []
 
     def step(self, action):
+
+        # exec absolute
         obs, r, done, info = self.env.step(action)
-        # update dicts
         self.actions.append(action)
+
+        # update dicts
         for key in obs.keys():
             self.obs[key].append(obs[key])
 
@@ -51,8 +54,8 @@ class DataCollector:
             actions.append(self.data_grp[dk]["actions_raw"][:])
         actions = np.concatenate(actions, axis=0)
 
-        actions_min = np.concatenate([self.env.min_qpos, [0.]]) #np.min(actions, axis=0)
-        actions_max = np.concatenate([self.env.max_qpos, [1.]]) # np.max(actions, axis=0)
+        actions_min = np.min(actions, axis=0) # np.concatenate([self.env.min_qpos, [0.]]) # 
+        actions_max = np.max(actions, axis=0) # np.concatenate([self.env.max_qpos, [1.]]) # 
         self.data_grp.attrs.create("actions_min", actions_min)
         self.data_grp.attrs.create("actions_max", actions_max)
 
@@ -60,7 +63,7 @@ class DataCollector:
             # normalize actions to [-1., 1.]
             actions_normalized = normalize(self.data_grp[dk]["actions_raw"][:], min=actions_min, max=actions_max)
             self.data_grp[dk].create_dataset("actions", data=actions_normalized, dtype=np.float32)
-    
+
     def compute_paths(self):
         from utils.paths import generate_path_2d_from_obs, add_path_2d_to_img, smooth_path_rdp, scale_path
         for dk in self.data_grp.keys():
