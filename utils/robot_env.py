@@ -10,11 +10,13 @@ from utils.blocks import add_objects_to_mujoco_xml
 from utils.normalize import normalize, denormalize
 
 class RobotEnv:
-    def __init__(self, model_path, camera_name="front", img_render=[480, 640], img_resize=None, calib_dict=None, reset_qpos_noise_std=0., n_steps=50, time_steps=0.002):
+    def __init__(self, model_path, controller="abs_joint", camera_name="front", img_render=[480, 640], img_resize=None, calib_dict=None, reset_qpos_noise_std=0., n_steps=50, time_steps=0.002):
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
 
+        self.model.body_gravcomp[:] = 1.0
+        
         self.time_steps = time_steps
         self.model.opt.timestep = time_steps
         self.n_steps = n_steps
@@ -37,6 +39,8 @@ class RobotEnv:
         self.gripper_actuator_ids = [
             self.model.actuator(name).id for name in ["joint8"]
         ]
+
+        self.ee_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "ee_site")
 
         # self.reset_qpos = np.array([0.0, -1.3, 0.0, -2.5, 0.0, 1.0, 0.])
         self.reset_qpos = np.array(
@@ -67,7 +71,15 @@ class RobotEnv:
         self.img_render = img_render
         self.img_resize = img_resize
         self.calib_dict = calib_dict
-        
+        self.reset_camera_pose()
+        self.renderer = mujoco.Renderer(
+            self.model, height=self.img_render[0], width=self.img_render[1]
+        )
+                
+        self.action_dimension = 7 + 1
+        self.controller = controller
+
+    def reset_camera_pose(self):
         if self.calib_dict is not None:
 
             for sn, camera_name in zip(self.calib_dict.keys(), [self.camera_name]):
@@ -85,19 +97,28 @@ class RobotEnv:
                 R[:3, :3] = np.array(self.calib_dict[sn]["extrinsic"]["ori"])
                 R[:3, 3] = np.array(self.calib_dict[sn]["extrinsic"]["pos"]).reshape(-1)
                 self.set_camera_extrinsic(camera_name, R)
-
-        self.renderer = mujoco.Renderer(
-            self.model, height=self.img_render[0], width=self.img_render[1]
-        )
-                
-        self.action_dimension = 7 + 1
+        mujoco.mj_forward(self.model, self.data)
 
     def get_gripper_state(self):
         return np.array([self.gripper_state], dtype=np.float32)
     
+    def get_ee_pose(self):
+        return np.concatenate((self.get_ee_pos(), self.get_ee_quat()), axis=0)
+    
     def get_ee_pos(self):
-        site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "ee_site")
-        return self.data.site_xpos[site_id].astype(np.float32)
+        return self.data.site_xpos[self.ee_site_id].astype(np.float32)
+
+    def get_ee_quat(self):
+        try:
+            return R.from_matrix(self.get_ee_mat()).as_quat(scalar_first=True)
+        except:
+            # old scipy version defaults to scalar_first=False
+            quat = R.from_matrix(self.get_ee_mat()).as_quat()
+            quat = np.array([quat[3], quat[0], quat[1], quat[2]])
+            return quat
+    
+    def get_ee_mat(self):
+        return self.data.site_xmat[self.ee_site_id].reshape(3, 3).astype(np.float32)
     
     def get_qpos(self):
         return self.data.qpos[self.joint_qpos_ids].astype(np.float32)
@@ -163,11 +184,66 @@ class RobotEnv:
         # points = depth_to_points(depth, intrinsic=intrinsic, extrinsic=extrinsic, depth_scale=1.0)
         return points
 
+    def compute_ik(self, target_pos, target_quat, integration_dt=0.1, damping=1e-4):
+    
+        curr_pos, curr_quat = self.get_ee_pos(), self.get_ee_quat()
+
+        # Pre-allocate numpy arrays.
+        jac = np.zeros((6, self.model.nv))
+        diag = damping * np.eye(6)
+        error = np.zeros(6)
+        error_pos = error[:3]
+        error_ori = error[3:]
+        curr_quat_conj = np.zeros(4)
+        error_quat = np.zeros(4)
+
+        # Position error.
+        error_pos[:] = target_pos - curr_pos
+
+        # Orientation error.
+        mujoco.mju_negQuat(curr_quat_conj, curr_quat)
+        mujoco.mju_mulQuat(error_quat, target_quat, curr_quat_conj)
+        mujoco.mju_quat2Vel(error_ori, error_quat, 1.0)
+
+        # Get the Jacobian with respect to the end-effector site.
+        mujoco.mj_jacSite(self.model, self.data, jac[:3], jac[3:], self.ee_site_id)
+        # Solve system of equations: J @ dq = error.
+        jac = jac[:, self.joint_qpos_ids]
+        dq = jac.T @ np.linalg.solve(jac @ jac.T + diag, error)
+
+        # Create full joint velocity vector
+        dq_full = np.zeros(self.model.nv)
+        dq_full[self.joint_qpos_ids] = dq
+
+        # Get full joint position vector
+        q_full = self.data.qpos.copy()
+        
+        # Integrate joint velocities to obtain joint positions
+        mujoco.mj_integratePos(self.model, q_full, dq_full, integration_dt)
+
+        # Return only the controlled joint positions
+        q = q_full[self.joint_qpos_ids]
+        q = np.clip(q, self.min_qpos, self.max_qpos)
+        return q
+
     def step(self, action):
+        if self.controller == "abs_joint":
+            qpos = action[:7]
+        elif self.controller == "rel_joint":
+            qpos = self.data.qpos[self.joint_qpos_ids] + action[:7]
+        elif self.controller == "abs_ee":
+            qpos = self.compute_ik(action[:3], action[3:7])
+        elif self.controller == "rel_ee":
+            curr_ee_pose = self.get_ee_pose()
+            qpos = self.compute_ik(curr_ee_pose[:3] + action[:3], curr_ee_pose[3:] + action[3:7])
+        else:
+            raise ValueError(f"Invalid controller: {self.controller}")
+        gripper_act = action[7]
+
         # Apply the action to the robot.
-        self.data.ctrl[self.joint_actuator_ids] = action[:7]
-        self.data.ctrl[self.gripper_actuator_ids] = action[7] * 255.0
-        self.gripper_state = action[7] # 1. if action[7] > 0.5 else 0.
+        self.data.ctrl[self.joint_actuator_ids] = qpos
+        self.data.ctrl[self.gripper_actuator_ids] = gripper_act * 255.0
+        self.gripper_state = gripper_act # 1. if action[7] > 0.5 else 0.
         mujoco.mj_step(self.model, self.data, nstep=self.n_steps)
     
     def adjust_intrinsics_for_resize(self, K):
@@ -187,14 +263,17 @@ class RobotEnv:
             2 * np.arctan(self.img_render[0] / (2 * fy))
         )
 
-    def set_camera_extrinsic(self, camera_name, R):
+    def set_camera_extrinsic(self, camera_name, R, mujoco_format=False):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, camera_name)
 
         cam_base_pos = R[:3, 3]
         cam_base_ori = R[:3, :3]
-        camera_axis_correction = np.array(
-            [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]
-        )
+        if mujoco_format:
+            camera_axis_correction = np.eye(3)
+        else:
+            camera_axis_correction = np.array(
+                [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]
+            )
 
         self.model.cam_pos[cam_id] = cam_base_pos
         from scipy.spatial.transform import Rotation as Rot
@@ -221,7 +300,7 @@ class RobotEnv:
             K = self.adjust_intrinsics_for_resize(K)
         return K
 
-    def get_camera_extrinsic(self):
+    def get_camera_extrinsic(self, mujoco_format=False):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera_name)
 
         camera_pos = self.data.cam_xpos[cam_id]
@@ -231,18 +310,135 @@ class RobotEnv:
         R[:3, :3] = camera_rot
         R[:3, 3] = camera_pos
 
-        # https://github.com/ARISE-Initiative/robosuite/blob/de64fa5935f9f30ce01b36a3ef1a3242060b9cdb/robosuite/utils/camera_utils.py#L39
-        camera_axis_correction = np.array(
-            [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, -1.0, 0.0, 0.0],
-                [0.0, 0.0, -1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
-        R = R @ camera_axis_correction
+        if not mujoco_format:
+            # https://github.com/ARISE-Initiative/robosuite/blob/de64fa5935f9f30ce01b36a3ef1a3242060b9cdb/robosuite/utils/camera_utils.py#L39
+            camera_axis_correction = np.array(
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, -1.0, 0.0, 0.0],
+                    [0.0, 0.0, -1.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ]
+            )
+            R = R @ camera_axis_correction
 
         return R
+
+    ### RANDOMIZATION ###
+    def init_randomize(self):
+        self.reset()
+        # camera
+        self.calib_dict_copy = self.calib_dict.copy()
+        # color
+        self.geom_rgba = self.model.geom_rgba.copy()
+        # light
+        self.light_pos = self.model.light_pos.copy()
+        self.light_dir = self.model.light_dir.copy()
+        self.light_castshadow = self.model.light_castshadow.copy()
+        self.light_ambient = self.model.light_ambient.copy()
+        self.light_diffuse = self.model.light_diffuse.copy()
+        self.light_specular = self.model.light_specular.copy()
+
+    def reset_randomize(self):
+        # color
+        self.model.geom_rgba = self.geom_rgba
+        # camera pose
+        self.calib_dict = self.calib_dict_copy
+        self.reset_camera_pose()
+        # light
+        self.model.light_pos = self.light_pos
+        self.model.light_dir = self.light_dir
+        self.model.light_castshadow = self.light_castshadow
+        self.model.light_ambient = self.light_ambient
+        self.model.light_diffuse = self.light_diffuse
+        self.model.light_specular = self.light_specular
+
+    def randomize_camera_pose(self):
+        # # noise fovy
+        # intrinsic = self.get_camera_intrinsic()
+        # high_low = 5.
+        # fy_noise = np.random.uniform(low=-high_low, high=high_low)
+        # intrinsic[1, 1] += fy_noise
+        # self.set_camera_intrinsic(self.camera_name, intrinsic[0, 0], intrinsic[1, 1], intrinsic[0, 2], intrinsic[1, 2], intrinsic[2, 2])
+        # noise camera pose
+        camera_extrinsic = self.get_camera_extrinsic(mujoco_format=True)
+        scale = 2e-2
+        pos_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
+        scale = 2e-2
+        ori_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
+        camera_extrinsic[:3, 3] += pos_noise
+        camera_extrinsic[:3, :3] = R.from_euler("xyz", ori_noise, degrees=False).as_matrix() @ camera_extrinsic[:3, :3]
+        self.set_camera_extrinsic(self.camera_name, camera_extrinsic, mujoco_format=True)
+
+    def randomize_all_color(self):
+        self.model.geom_rgba[:, :3] *= np.random.uniform(
+            0.95, 1.05, (self.model.geom_rgba.shape[0], 3)
+        )
+
+    def randomize_background_color(self):
+       
+        geom_names = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, i) for i in range(self.model.ngeom)]
+
+        self.wall_geom_ids = []
+        self.table_geom_ids = []
+        for name in geom_names:
+            if name is None:
+                continue
+            if "wall" in name:
+                self.wall_geom_ids += [
+                    mujoco.mj_name2id(
+                        self.model, mujoco.mjtObj.mjOBJ_GEOM, name
+                    )
+                ]
+            if "table" in name:
+                self.table_geom_ids += [
+                    mujoco.mj_name2id(
+                        self.model, mujoco.mjtObj.mjOBJ_GEOM, name
+                    )
+                ]
+        geom_ids = self.wall_geom_ids + self.table_geom_ids
+
+        # full color randomization
+        # self.model.geom_rgba[geom_ids, :3] = np.random.uniform(
+        #     0, 1, (len(geom_ids), 3)
+        # )
+        # color jitter
+        self.model.geom_rgba[geom_ids, :3] *= np.random.uniform(
+            0.7, 1.3, (len(geom_ids), 3)
+        )
+        
+    def randomize_light(self):
+        
+        # change light position and direction -> low impact
+        light_names = ["light_left", "light_right"]
+        for light_name in light_names:
+            light_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_LIGHT, light_name)
+            # Adjust position and direction slightly
+            scale = 3e-1
+            self.model.light_pos[light_id] += np.random.normal(0.0, scale, size=3)
+            self.model.light_dir[light_id] += np.random.normal(0.0, scale, size=3)
+        
+        self.model.light_castshadow = np.random.choice([0, 1])
+
+        # change light color -> large impact
+        scale = 3e-2
+        self.model.light_ambient += np.random.normal(0.0, scale, size=3)
+        self.model.light_diffuse += np.random.normal(0.0, scale, size=3)
+        self.model.light_specular += np.random.normal(0.0, scale, size=3)
+
+    def randomize(self):
+
+        # reset to intial values
+        self.reset_randomize()
+
+        # randomize camera, background color, light
+        self.randomize_camera_pose()
+        self.randomize_background_color()
+        # self.randomize_all_color()
+        self.randomize_light()
+
+        # push changes from model to data | reset mujoco data
+        mujoco.mj_resetData(self.model, self.data)
 
 
 class CubeEnv(RobotEnv):
@@ -253,7 +449,8 @@ class CubeEnv(RobotEnv):
         size=0.03,
         obj_pos_dist=[[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
         obj_ori_dist=[[0, 0], [0, 0], [-np.pi / 4, np.pi / 4]],
-        obj_color_dist=[[0, 0, 0], [1, 1, 1]],
+        obj_color_dist=None,
+        # obj_color_dist=[[0, 0, 0], [1, 1, 1]],
         obs_keys=["qpos", "rgb"],
         seed=0,
         **kwargs,
@@ -265,7 +462,7 @@ class CubeEnv(RobotEnv):
         self.size = size
         self.obj_pos_dist = obj_pos_dist
         self.obj_ori_dist = obj_ori_dist
-        self.obj_color_dist = obj_color_dist
+        # self.obj_color_dist = obj_color_dist
         np.random.seed(self.seed)
         modified_xml_path = self.generate_xml(xml_path, self.num_objs, self.size)
         super().__init__(modified_xml_path, **kwargs)
@@ -290,8 +487,36 @@ class CubeEnv(RobotEnv):
     
     def reset_objs(self):
         obj_poses = []
+
+        def sample_positions(N, box_min, box_max, d):
+            for _ in range(10000):  # brute-force retries
+                candidates = np.random.uniform(box_min, box_max, size=(N * 5, 2))
+                selected = [candidates[0]]
+                if N == 1:
+                    return selected
+                
+                for pt in candidates[1:]:
+                    if all(np.linalg.norm(pt - s) >= d for s in selected):
+                        selected.append(pt)
+                        if len(selected) == N:
+                            return selected
+        box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.06)
+        
         for _ in range(self.num_objs):
-            box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
+            # box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
+            box_pos = np.concatenate((box_poss[_], [0.03]))
+
+            # ensure box is not too close to prev boxes
+            # if len(obj_poses) > 0:
+            #     solution_found = False
+            #     for _ in range(100):
+            #         box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
+            #         if np.all(np.abs(box_pos[:2] - np.array(obj_poses)[:,:2]) > 0.06):
+            #             solution_found = True
+            #             break
+            #     if not solution_found:
+            #         print("No solution found in 100 attempts, hard env reset - try to increase sample space")
+            #         self.reset()
             box_euler = np.zeros(3)
             box_euler[2] = np.random.uniform(
                 self.obj_ori_dist[2][0], self.obj_ori_dist[2][1]
@@ -305,10 +530,23 @@ class CubeEnv(RobotEnv):
                 box_quat = R.from_euler("xyz", box_euler, degrees=False).as_quat()
                 box_quat = np.array([box_quat[3], box_quat[0], box_quat[1], box_quat[2]])
             obj_poses.append(np.concatenate((box_pos, box_quat)))
+        obj_poses = np.concatenate(obj_poses, axis=0)
         self.set_obj_poses(obj_poses)
-        colors = np.random.uniform(
-            self.obj_color_dist[0], self.obj_color_dist[1], size=(self.num_objs*3)
-        )
+
+        main_colors = {
+            "blue":    [0.0, 0.0, 1.0],
+            "red":     [1.0, 0.0, 0.0],
+            "green":   [0.0, 1.0, 0.0],
+            "yellow":  [1.0, 1.0, 0.0],
+            # "magenta": [1.0, 0.0, 1.0],
+            # "orange":  [1.0, 0.5, 0.0]
+        }
+        colors = np.concatenate([main_colors[i] for i in np.random.choice(list(main_colors.keys()), size=self.num_objs, replace=False)], axis=0)
+        
+        if self.num_objs == 1:
+            colors = main_colors["blue"]
+        if self.num_objs == 2:
+            colors = np.concatenate([main_colors["blue"], main_colors["red"]], axis=0)
         self.set_obj_colors(colors)
 
     def set_obj_poses(self, obj_poses):
@@ -364,5 +602,7 @@ class CubeEnv(RobotEnv):
     def is_success(self, task):
         if task == "pick":
             return self.get_obj_poses()[2] > 0.1
+        elif task == "pick_and_place":
+            return np.sum(np.abs(self.get_obj_poses()[:2] - self.get_obj_poses()[7:9])) < 0.06
         else:
             raise ValueError(f"Invalid task: {task}")
