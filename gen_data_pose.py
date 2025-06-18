@@ -23,19 +23,24 @@ def visualize_points(env):
         size=0.01
     )
     import IPython; IPython.embed()
-    
+
+def get_pose(qpos, mp):
+    pos, quat = mp.compute_fk(torch.from_numpy(qpos).float().cuda()[None])
+    return np.concatenate((pos.cpu().numpy()[0], quat.cpu().numpy()[0]), axis=0)
+
+def get_qpos(pose, mp):
+    qpos = mp.compute_ik(torch.from_numpy(pose[:3]).float().cuda()[None], torch.from_numpy(pose[3:]).float().cuda()[None])
+    return qpos.cpu().numpy()[0]
+
 if __name__ == "__main__":
 
-    n_episodes = 10000
+    n_episodes = 10
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
-    
-    outfile = f"blue_cube_{n_episodes}_128_abs_joint_vis_aug.hdf5"
-    # outfile = f"blue_cube_{n_episodes}_128_abs_joint_vis_aug_custom.hdf5"
-    # outfile = f"debug_vis_aug.hdf5"
+    # outfile = f"blue_cube_{n_episodes}_128.hdf5"
+    outfile = f"debug_ik_{n_episodes}.hdf5"
 
     from utils.pointclouds import read_calibration_file
-    # calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_realsense.json"
-    calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_zed.json"
+    calib_file = "/home/memmelma/Projects/robotic/most_recent_calib.json"
     calib_dict = read_calibration_file(calib_file)
     
     env_config = {
@@ -57,7 +62,7 @@ if __name__ == "__main__":
         # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
         # "obj_color_dist": [[0, 0, 1], [0, 0, 1]],
         "seed": 0,
-        "obs_keys": ["ee_pos", "ee_pose", "qpos", "qpos_normalized", "gripper_state", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
+        "obs_keys": ["ee_pos", "qpos", "qpos_normalized", "gripper_state", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
         
         # RobotEnv
         "camera_name": "custom",
@@ -69,13 +74,12 @@ if __name__ == "__main__":
         "n_steps": 50,
         "time_steps": 0.002,
         "reset_qpos_noise_std": 1e-2,
-        "controller": "abs_joint",
+        "controller": "abs_ee",
     }
     env = CubeEnv(**env_config)
 
     data_config = {
         "n_episodes": n_episodes,
-        "visual_augmentation": True,
         "action_noise_std": 0.0, # 5e-3,
         "train_valid_split": 0.99,
     }
@@ -90,19 +94,11 @@ if __name__ == "__main__":
         train_valid_split=data_config["train_valid_split"],
     )
 
-    if data_config["visual_augmentation"]:
-        env.init_randomize()
-
+    # env.init_randomize()
     for i in trange(n_episodes):
         
-        if data_config["visual_augmentation"]:
-            env.randomize()
-    
+        # env.randomize()
         env.reset_objs()
-        if env.num_objs == 1:
-            env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
-
-
         data_collector.reset()
 
         # visualize_points(env)
@@ -111,48 +107,58 @@ if __name__ == "__main__":
         obj_poses = env.get_obj_poses()
         obj_pos, obj_quat = obj_poses[:3], obj_poses[3:7]
         qpos = env.get_qpos()
-        prev_qpos = env.get_qpos()
 
         # plan pick motion
         segments = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
 
+        data = {
+            "qpos": [],
+            "act": [],
+
+        }
         # execute
         # skip some steps to speed up execution
         for qpos in segments[0][3:-3]:
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
-            if env_config["controller"] == "rel_joint":
-                act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
-            else:
-                act = np.concatenate((qpos + noise, [1.0]))
+            # act = get_qpos(get_pose(qpos + noise, mp), mp)
+            act = get_pose(qpos + noise, mp)
+            data["qpos"].append(qpos)
+            data["act"].append(act)
+            # compute error between act and qpos
+            error = np.linalg.norm(act - qpos)
+            # print(f"error: {error}")
+            act = np.concatenate((act, [1.0]))
+            # act = np.concatenate((qpos + noise, [1.0]))
             data_collector.step(act)
-            prev_qpos = env.get_qpos()
-
         for qpos in segments[1][3:-3]:
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
-            if env_config["controller"] == "rel_joint":
-                act = np.concatenate((qpos - prev_qpos + noise, [0.0]))
-            else:
-                act = np.concatenate((qpos + noise, [0.0]))
+            # act = get_qpos(get_pose(qpos + noise, mp), mp)
+            act = get_pose(qpos + noise, mp)
+            data["qpos"].append(qpos)
+            data["act"].append(act)
+            error = np.linalg.norm(act - qpos)
+            # print(f"error: {error}")
+            act = np.concatenate((act, [0.0]))
+            # act = np.concatenate((qpos + noise, [0.0]))
             data_collector.step(act)
-            prev_qpos = env.get_qpos()
 
         # import matplotlib.pyplot as plt
         # qpos = np.array(data["qpos"])
         # act = np.array(data["act"])
-        # prev_qpos = np.array(data["prev_qpos"])
         # fig, axs = plt.subplots(7, 1, figsize=(10, 10), sharex=True)
+        # joint_min_max = np.array([[-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973], [ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973]])
         # for j in range(qpos.shape[1]):
-        #     axs[j].plot(prev_qpos[:, j], label=f"prev_qpos_{j}")
         #     axs[j].plot(qpos[:, j], label=f"qpos_{j}")
         #     axs[j].plot(act[:, j], label=f"act_{j}")
-        # axs[0].legend()
+        #     axs[j].set_ylim(joint_min_max[0, j], joint_min_max[1, j])
         # plt.savefig(os.path.join(save_dir, f"img_{i}.png"))
-        # import IPython; IPython.embed()
 
-        if i % 100 == 0 or i < 10:
+        if n_episodes <= 10:
             imgs = np.array(data_collector.obs["rgb"])
             imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
-
+        if not env.is_success(task="pick"):
+            print(f"Episode {i} failed")
+        
         data_collector.save()
 
     data_collector.close()

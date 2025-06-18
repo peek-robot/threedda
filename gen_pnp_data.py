@@ -32,7 +32,7 @@ if __name__ == "__main__":
     outfile = f"pnp_{n_episodes}_128_abs_joint.hdf5"
 
     from utils.pointclouds import read_calibration_file
-    calib_file = "/home/memmelma/Projects/robotic/most_recent_calib.json"
+    calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_zed.json"
     calib_dict = read_calibration_file(calib_file)
     
     env_config = {
@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
         # execute
         # skip some steps to speed up execution
-        for qpos in segments[0]:
+        for qpos in segments[0][3:-3]:
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
             if env_config["controller"] == "rel_joint":
                 act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
@@ -124,7 +124,7 @@ if __name__ == "__main__":
                 act = np.concatenate((qpos + noise, [1.0]))
             data_collector.step(act)
             prev_qpos = env.get_qpos()
-        for qpos in segments[1]:
+        for qpos in segments[1][3:-3]:
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
             if env_config["controller"] == "rel_joint":
                 act = np.concatenate((qpos - prev_qpos + noise, [0.0]))
@@ -132,7 +132,7 @@ if __name__ == "__main__":
                 act = np.concatenate((qpos + noise, [0.0]))
             data_collector.step(act)
             prev_qpos = env.get_qpos()
-        for qpos in segments[2]:
+        for qpos in segments[2][3:-3]:
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
             if env_config["controller"] == "rel_joint":
                 act = np.concatenate((qpos - prev_qpos + noise, [0.0]))

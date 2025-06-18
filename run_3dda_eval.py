@@ -42,25 +42,43 @@ def plot_actions(pred_actions, true_actions, file_name, act_dim_labels=["x", "y"
 
 if __name__ == "__main__":
 
-    mode = "closed_loop" # closed_loop" # "closed_loop", "open_loop", "replay"
+    # args for ckpt_path and data_path using argparse
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", type=str, default="3dda_closeup")
+    parser.add_argument("--dataset", type=str, default="/home/memmelma/Projects/robotic/gifs_curobo/red_cube_5000_closeup.hdf5")
+    parser.add_argument("--mode", type=str, default="closed_loop")
+    parser.add_argument("--action_chunking", action="store_true", help="Enable action chunking")
+    parser.add_argument("--n_rollouts", type=int, default=10)
+    parser.add_argument("--n_steps", type=int, default=70)
+    
+    args = parser.parse_args()
 
-    n_rollouts = 10
-    n_steps = 50 # 70
+    ckpt_path = f"/home/memmelma/Projects/robotic/results/{args.name}/best.pth"
 
-    action_chunking = True
+    data_path = args.dataset
+    mode = args.mode
+    n_rollouts = args.n_rollouts
+    action_chunking = args.action_chunking
+    # mode = "closed_loop" # closed_loop" # "closed_loop", "open_loop", "replay"
+
+    n_rollouts = args.n_rollouts
+    n_steps = args.n_steps
+
+    # action_chunking = True
     if mode == "open_loop":
         action_chunking = False
 
-    # works w/ action chunking
-    ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_closeup/best.pth"
-    # 
+    # # works w/ action chunking
+    # ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_closeup/best.pth"
+    # # 
     
-    ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_new_params/best.pth"
-    data_path = "/home/memmelma/Projects/robotic/gifs_curobo/red_cube_5000_closeup.hdf5"
+    # ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_new_params/best.pth"
+    # data_path = "/home/memmelma/Projects/robotic/gifs_curobo/red_cube_5000_closeup.hdf5"
     
-    ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_no_noise/last.pth"
-    ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_no_noise/best.pth"
-    data_path = "/home/memmelma/Projects/robotic/gifs_curobo/blue_cube_1000_path_no_noise.hdf5"
+    # ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_no_noise/last.pth"
+    # ckpt_path = "/home/memmelma/Projects/robotic/results/3dda_no_noise/best.pth"
+    # data_path = "/home/memmelma/Projects/robotic/gifs_curobo/blue_cube_1000_path_no_noise.hdf5"
     
 
     save_dir = os.path.join(os.path.dirname(ckpt_path), mode)
@@ -83,12 +101,16 @@ if __name__ == "__main__":
     env_config["seed"] += 1
     print("WARNING: evaluating in train env")
     env_config["obs_keys"] = ["qpos", "gripper_state", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"]
+    # env_config["obs_keys"] = ["qpos", "qpos_normalized", "gripper_state", "rgb", "points"]
     env = CubeEnv(**env_config)
+
     
     # init framestack
     num_frames = model_config.history
     framestack = FrameStackWrapper(num_frames=num_frames)
 
+    # HACK
+    # data_path = "/home/memmelma/Projects/robotic/blue_cube_black_curtain.hdf5"
     successes = []
     for i in trange(n_rollouts):
 
@@ -135,7 +157,7 @@ if __name__ == "__main__":
                 # add batch dimension, convert to torch
                 sample = {"obs": {k: torch.from_numpy(v[None]).to(device) for k, v in obs.items()}}
                 # preprocess same as training
-                batch_prepared = prepare_batch(sample, clip_embedder, history=model_config.history, horizon=model_config.horizon, obs_noise_std=0.0, device=device)
+                batch_prepared = prepare_batch(sample, clip_embedder, history=model_config.history, horizon=model_config.horizon, obs_noise_std=0.0, obs_path=model_config.obs_path, device=device)
                 # [B, T, 7+1]
                 with torch.no_grad():
                     acts = policy.forward(**batch_prepared, run_inference=True)
@@ -145,11 +167,13 @@ if __name__ == "__main__":
                         pred_actions.append(act)
                         act[7] = 1. if act[7] > 0.5 else 0.
                         obs, r, done, info = env.step(act)
+                        imgs.append(env.get_rgb())
                 else:
                     act = acts.cpu().numpy()[0,0]
                     # discretize gripper action to ensure gripper_state is (0., 1.) as during data gen
                     act[7] = 1. if act[7] > 0.5 else 0.
                     pred_actions.append(act)
+                    import IPython; IPython.embed()
                     obs, r, done, info = env.step(act)
 
             # # act = denormalize(act, min=action_min, max=action_max)

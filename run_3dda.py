@@ -7,7 +7,10 @@
 import argparse
 import json
 import os
-
+import h5py
+import cv2
+import einops
+            
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -139,17 +142,35 @@ def train(
                     train_losses[k] = []
                 train_losses[k].append(v.item())
 
-        # logging
-        wandb.log({"epoch": epoch, **{f"train/{k}": sum(v) / len(v) for k, v in train_losses.items()}})
-        act_dim = acts.shape[-1]
-        plot_actions_and_log_wandb(acts.cpu().numpy().reshape(-1, act_dim), batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim), "train/actions", epoch)
+        if epoch % 25 == 0:
+            # logging
+            wandb.log({"epoch": epoch, **{f"train/{k}": sum(v) / len(v) for k, v in train_losses.items()}})
+            act_dim = acts.shape[-1]
+            plot_actions_and_log_wandb(acts.cpu().numpy().reshape(-1, act_dim), batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim), "train/actions", epoch)
 
-        rgb_grid = torchvision.utils.make_grid(batch_prepared["rgb_obs"][:9,0], nrow=3,  normalize=True, padding=2)
-        wandb.log({"epoch": epoch, "train/obs_rgb": wandb.Image(rgb_grid)})
+            # log clip features
+            rgb_prep = batch_prepared["rgb_obs"][:9]
+            rgb_prep = einops.rearrange(rgb_prep, "bt ncam c h w -> (bt ncam) c h w")
+            rgb_prep = model.encoder.normalize(rgb_prep)
+            with torch.no_grad():
+                x = model.encoder.backbone(rgb_prep)["res3"]
+            feature_map = x.cpu().mean(1)
+            feature_map_resized = np.stack([cv2.resize(i, rgb_prep.shape[-2:]) for i in feature_map.numpy()])
+            import matplotlib.cm as cm
+            feature_map_colored = cm.inferno(feature_map_resized)[...,:3].transpose(0, 3, 1, 2) * 255.
 
-        z = batch_prepared["pcd_obs"][:,:,2,:,:]
-        z_grid = torchvision.utils.make_grid(z[:9], nrow=3,  normalize=True, padding=2)
-        wandb.log({"epoch": epoch, "train/obs_pcd": wandb.Image(z_grid)})
+            feature_map = torch.from_numpy(feature_map_colored)#.unsqueeze(1)
+            feature_grid = torchvision.utils.make_grid(feature_map, nrow=3,  normalize=True, padding=2)
+            wandb.log({"epoch": epoch, "train/obs_rgb_feature": wandb.Image(feature_grid)})
+
+            # log rgb obs
+            rgb_grid = torchvision.utils.make_grid(batch_prepared["rgb_obs"][:9,0], nrow=3,  normalize=True, padding=2)
+            wandb.log({"epoch": epoch, "train/obs_rgb": wandb.Image(rgb_grid)})
+
+            # log pcd obs
+            z = batch_prepared["pcd_obs"][:,:,2,:,:]
+            z_grid = torchvision.utils.make_grid(z[:9], nrow=3,  normalize=True, padding=2)
+            wandb.log({"epoch": epoch, "train/obs_pcd": wandb.Image(z_grid)})
 
         # save checkpoint
         best_loss = save_checkpoint(
@@ -269,6 +290,12 @@ if __name__ == "__main__":
         default=5,
         help="fps subsampling factor",
     )
+    parser.add_argument(
+        "--history",
+        type=int,
+        default=1,
+        help="history",
+    )
 
     # parse arguments
     args = parser.parse_args()
@@ -281,18 +308,29 @@ if __name__ == "__main__":
     output_dir = os.path.join(args.outdir, args.name)
     os.makedirs(output_dir, exist_ok=True)
 
+    # normalization_bounds = np.array([
+    #     [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973],
+    #     [ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973]
+    # ])
+    with h5py.File(args.dataset, "r") as f:
+        data_grp = f["data"]
+        actions_min = data_grp.attrs["actions_min"][:7]
+        actions_max = data_grp.attrs["actions_max"][:7]
+    normalization_bounds = np.stack([actions_min, actions_max], axis=0)
+
     from argparse import Namespace
     model_config = {
         "num_epochs": 500,
         "epoch_every_n_steps": 100,
         "horizon": 16,
-        "history": 2,
-        "batch_size": 128,
+        "history": args.history,
+        "batch_size": 64,
         "lr": 3e-4,
         "embedding_dim": 60,
         "num_attn_heads": 6,
-        "diffusion_timesteps": 25, # -> CALVIN: 25, else: 100
+        "diffusion_timesteps": 100,
         "action_space": args.action_space, # "joint" or "abs_ee"
+        "normalization_bounds": normalization_bounds,
 
         # ablations
         "fps_subsampling_factor": args.fps_subsampling_factor,

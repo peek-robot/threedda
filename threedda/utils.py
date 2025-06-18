@@ -83,8 +83,7 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
 
             # import matplotlib.pyplot as plt
             # plt.imsave(f"path_img.png", img)
-        
-
+    
     B, H, W = sample["obs"]["depth"].shape
     points = depth_to_points_torch_batched(sample["obs"]["depth"].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     img_key = "rgb" if not obs_path else "path_img"
@@ -114,12 +113,12 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
     trajectory_mask = torch.full((B, horizon, gt_trajectory.shape[-1]), False).float()
 
     batch = {
-        "gt_trajectory": gt_trajectory,
-        "curr_gripper": curr_gripper,
-        "rgb_obs": rgb_obs,
-        "pcd_obs": pcd_obs,
-        "instruction": instruction,
-        "trajectory_mask": trajectory_mask,
+        "gt_trajectory": gt_trajectory.float(),
+        "curr_gripper": curr_gripper.float(),
+        "rgb_obs": rgb_obs.float(),
+        "pcd_obs": pcd_obs.float(),
+        "instruction": instruction.float(),
+        "trajectory_mask": trajectory_mask.float(),
     }
     if device is not None:
         batch = {k: v.to(device) for k, v in batch.items()}
@@ -164,7 +163,7 @@ def get_model(da_config):
             fps_subsampling_factor=5,
             # TODO: check those
             gripper_loc_bounds=np.array([[-1.0, -1.0, 0], [1.0, 1.0, 1.0]]),
-            joint_loc_bounds=np.array([[-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973], [ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973]]),
+            joint_loc_bounds=da_config.normalization_bounds,
             diffusion_timesteps=da_config.diffusion_timesteps,
             nhist=da_config.history,
             relative=False,

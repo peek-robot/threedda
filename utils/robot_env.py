@@ -249,8 +249,8 @@ class RobotEnv:
     def adjust_intrinsics_for_resize(self, K):
         assert self.img_render[0] == self.img_render[1] and self.img_resize[0] == self.img_resize[1]
         K_new = K.copy()
-        scale_x = self.img_resize[1] / self.img_render[1]  # width scale
-        scale_y = self.img_resize[0] / self.img_render[0]  # height scale
+        scale_x = self.img_resize[1] / float(self.img_render[1])  # width scale
+        scale_y = self.img_resize[0] / float(self.img_render[0])  # height scale
         K_new[0, 0] *= scale_x  # fx
         K_new[1, 1] *= scale_y  # fy
         K_new[0, 2] *= scale_x  # cx
