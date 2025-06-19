@@ -35,7 +35,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_noise_std=0.0, obs_path=False, device=None):
+def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_noise_std=0.0, obs_path=False, obs_mask=False, device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -45,11 +45,12 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
     # curr_gripper: (B, nhist, 3+4+X)
 
     qpos = sample["obs"]["qpos"]
-    gripper_state = sample["obs"]["gripper_state"].float()
+    # discrete gripper state for action prediction -> BCE loss
+    gripper_state_discrete = sample["obs"]["gripper_state_discrete"].float()
     # future actions
-    gt_trajectory = torch.cat((qpos[:, history:], gripper_state[:, history:]), dim=-1)
+    gt_trajectory = torch.cat((qpos[:, history:], gripper_state_discrete[:, history:]), dim=-1)
     # past actions
-    curr_gripper = torch.cat((qpos[:, :history], gripper_state[:, :history]), dim=-1)
+    curr_gripper = torch.cat((qpos[:, :history], gripper_state_discrete[:, :history]), dim=-1)
     # (optional) add noise to qpos obs
     if obs_noise_std > 0:
         curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape)
@@ -84,23 +85,16 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
             # import matplotlib.pyplot as plt
             # plt.imsave(f"path_img.png", img)
     
-    B, H, W = sample["obs"]["depth"].shape
-    points = depth_to_points_torch_batched(sample["obs"]["depth"].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
-    img_key = "rgb" if not obs_path else "path_img"
+    img_key = "rgb" if not obs_path else "path_rgb"
+    depth_key = "depth" if not obs_mask else "mask_depth"
+    
+    B, H, W = sample["obs"][depth_key].shape
+    points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
 
     if obs_crop:
         from utils.pointclouds import zero_points
         points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
-
-    # from utils.meshcat import create_visualizer, visualize_pointcloud
-    # vis = create_visualizer()
-    # visualize_pointcloud(
-    #     vis, 'points',
-    #     pc=points,
-    #     size=0.01
-    # )
-    # import IPython; IPython.embed()
     
     points = points.reshape(B, H, W, 3)
     colors = colors.reshape(B, H, W, 3)
@@ -155,15 +149,16 @@ def get_model(da_config):
     elif da_config.action_space == "joint":
         model = DiffuserJointer(
             backbone="clip",
-            image_size=(256,256),
+            image_size=da_config.image_size,
             embedding_dim=da_config.embedding_dim,
             num_attn_heads=da_config.num_attn_heads,
             num_vis_ins_attn_layers=2,
             use_instruction=True,
             fps_subsampling_factor=5,
             # TODO: check those
-            gripper_loc_bounds=np.array([[-1.0, -1.0, 0], [1.0, 1.0, 1.0]]),
-            joint_loc_bounds=da_config.normalization_bounds,
+            gripper_loc_bounds=da_config.gripper_loc_bounds, # np.array([[-1.0, -1.0, 0], [1.0, 1.0, 1.0]]),
+            joint_loc_bounds=da_config.joint_loc_bounds,
+            loss_weights=da_config.loss_weights,
             diffusion_timesteps=da_config.diffusion_timesteps,
             nhist=da_config.history,
             relative=False,
