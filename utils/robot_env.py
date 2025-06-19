@@ -43,17 +43,26 @@ class RobotEnv:
         self.ee_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "ee_site")
 
         # self.reset_qpos = np.array([0.0, -1.3, 0.0, -2.5, 0.0, 1.0, 0.])
-        self.reset_qpos = np.array(
-            [
-                0.01159181,
-                -0.52629131,
-                0.01545296,
-                -2.77785516,
-                -0.0103323,
-                3.00063801,
-                0.7462694,
-            ]
-        )
+        
+        # isaac pose
+        # self.reset_qpos = np.array(
+        #     [
+        #         0.01159181,
+        #         -0.52629131,
+        #         0.01545296,
+        #         -2.77785516,
+        #         -0.0103323,
+        #         3.00063801,
+        #         0.7462694,
+        #     ]
+        # )
+        
+        # much closer
+        self.reset_qpos = np.array([
+            0.02299943, -0.07843312, -0.03196311, -2.21364984, -0.01667695,
+        2.14565732,  0.75160931
+        ])
+
         self.gripper_state = 1.0
         self.reset_qpos_noise_std = reset_qpos_noise_std
 
@@ -99,8 +108,14 @@ class RobotEnv:
                 self.set_camera_extrinsic(camera_name, R)
         mujoco.mj_forward(self.model, self.data)
 
-    def get_gripper_state(self):
+    def get_gripper_state_discrete(self):
         return np.array([self.gripper_state], dtype=np.float32)
+
+    def get_gripper_state_continuous(self):
+        return np.array([self.data.qpos[self.gripper_qpos_ids][0]], dtype=np.float32)
+    
+    def get_gripper_state_normalized(self):
+        return normalize(self.get_gripper_state_continuous(), min=0.0, max=0.04)
     
     def get_ee_pose(self):
         return np.concatenate((self.get_ee_pos(), self.get_ee_quat()), axis=0)
