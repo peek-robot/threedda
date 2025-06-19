@@ -64,32 +64,54 @@ class DataCollector:
             actions_normalized = normalize(self.data_grp[dk]["actions_raw"][:], min=actions_min, max=actions_max)
             self.data_grp[dk].create_dataset("actions", data=actions_normalized, dtype=np.float32)
 
-    def compute_paths(self):
-        from utils.paths import generate_path_2d_from_obs, add_path_2d_to_img, smooth_path_rdp, scale_path
+    def compute_path_and_mask(self):
+        from utils.paths import generate_path_2d_from_obs, add_path_2d_to_img, add_mask_2d_to_img, smooth_path_rdp, scale_path
         for dk in self.data_grp.keys():
-            path = generate_path_2d_from_obs(self.data_grp[dk]["obs"])
-            # TODO dynamically set resolution
-            path = scale_path(path, min_in=0., max_in=224., min_out=0., max_out=1.)
+
+            H, W, C = self.data_grp[dk]["obs"]["rgb"][0].shape
+            
+            # compute SMOOTHED PATH in image space
+            path_raw = generate_path_2d_from_obs(self.data_grp[dk]["obs"]["ee_pos"], self.data_grp[dk]["obs"]["camera_intrinsic"], self.data_grp[dk]["obs"]["camera_extrinsic"])
+            path = scale_path(path_raw, min_in=0., max_in=H, min_out=0., max_out=1.)
             path = smooth_path_rdp(path, tolerance=0.05)
-            path = scale_path(path, min_in=0., max_in=1., min_out=0., max_out=224.).astype(np.int32)
+            path = scale_path(path, min_in=0., max_in=1., min_out=0., max_out=H).astype(np.int32)
 
             # store path as 2d image
             path_imgs = np.stack([add_path_2d_to_img(im, path) for im in self.data_grp[dk]["obs"]["rgb"]], axis=0)
-            self.data_grp[dk]["obs"].create_dataset("path_img", data=path_imgs, dtype=np.uint8)
+            self.data_grp[dk]["obs"].create_dataset("path_rgb", data=path_imgs, dtype=np.uint8)
 
             # path shape (N, 2) pad N with zeros until N=P
-            path_pad = np.pad(path, ((0, 127 - path.shape[1]), (0, 0)), mode="constant", constant_values=(0))
+            max_path_length = 127
+            path_pad = np.pad(path, ((0, max_path_length - path.shape[1]), (0, 0)), mode="constant", constant_values=(0))
             # add batch dim (B, P, 2)
             path_pad = np.repeat(path_pad[None], self.data_grp[dk].attrs["num_samples"], axis=0)
             # store raw path
             self.data_grp[dk]["obs"].create_dataset("path", data=path_pad, dtype=np.float32)
             
-            # import matplotlib.pyplot as plt
-            # plt.imsave(f"path_img_{dk}.png", path_imgs[0])
-            # import IPython; IPython.embed()
+            # compute MASK in image space
+            # obj 0 (& 1)
+            obj_pose_0 = self.data_grp[dk]["obs"]["obj_poses"][:, :3]
+            # obj_pose_1 = self.data_grp[dk]["obs"]["obj_poses"][:, 7:10]
+            obj_poses = obj_pose_0
+
+            mask_raw = generate_path_2d_from_obs(obj_poses, self.data_grp[dk]["obs"]["camera_intrinsic"], self.data_grp[dk]["obs"]["camera_extrinsic"])
+            mask = np.concatenate([path_raw, mask_raw], axis=0)
+
+            # store mask as 2d depth
+            mask_depths = np.stack([add_mask_2d_to_img(im, mask, mask_pixels=int(H * 0.15)) for im in self.data_grp[dk]["obs"]["depth"]], axis=0)
+            self.data_grp[dk]["obs"].create_dataset("mask_depth", data=mask_depths, dtype=np.int16)
+
+            # mask shape (N, 2) pad N with zeros until N=P
+            max_mask_length = 127
+            mask_pad = np.pad(mask, ((0, max_mask_length - mask.shape[1]), (0, 0)), mode="constant", constant_values=(0))
+            # add batch dim (B, P, 2)
+            mask_pad = np.repeat(mask_pad[None], self.data_grp[dk].attrs["num_samples"], axis=0)
+            # store raw mask
+            self.data_grp[dk]["obs"].create_dataset("mask", data=mask_pad, dtype=np.float32)
+
 
     def close(self):
-        self.compute_paths()
+        self.compute_path_and_mask()
         self.normalize_actions()
 
         mask_grp = self.f.create_group("mask")
