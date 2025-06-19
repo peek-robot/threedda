@@ -52,7 +52,7 @@ def project_point_cloud_to_2d(point_cloud, K, RT, return_depth=False):
         return np.stack((u, v), axis=1), depth
     return np.stack((u, v), axis=1)
 
-def generate_path_2d_from_obs(obs):
+def generate_path_2d_from_obs(points_3d, camera_intrinsic, camera_extrinsic):
     """
     Generate 2D path in image plane from ee_pos.
     - obs (dict): dataset observation
@@ -61,12 +61,11 @@ def generate_path_2d_from_obs(obs):
     """
 
     path = []
-    points_3d = obs["ee_pos"]
 
     for pi, point in enumerate(points_3d):
-        K = obs["camera_intrinsic"][pi]
-        R = obs["camera_extrinsic"][pi, :3, :3]
-        t = obs["camera_extrinsic"][pi, :3, 3]
+        K = camera_intrinsic[pi]
+        R = camera_extrinsic[pi, :3, :3]
+        t = camera_extrinsic[pi, :3, 3]
         RT = np.hstack((R, t.reshape(-1, 1)))
 
         path.append(project_point_cloud_to_2d(point[None], K, RT))
@@ -108,3 +107,13 @@ def add_path_2d_to_img(img, path, cmap=None, color=None):
         )
 
     return img_out
+
+def add_mask_2d_to_img(img, points, mask_pixels=25):
+    img_zeros = np.zeros_like(img)
+    for point in points:
+        x, y = point.astype(int)
+        y_minus, y_plus = int(max(0, y-mask_pixels)), int(min(img.shape[0], y+mask_pixels))
+        x_minus, x_plus = int(max(0, x-mask_pixels)), int(min(img.shape[1], x+mask_pixels))
+        # example for masking out a square
+        img_zeros[y_minus:y_plus, x_minus:x_plus] = img[y_minus:y_plus, x_minus:x_plus]
+    return img_zeros
