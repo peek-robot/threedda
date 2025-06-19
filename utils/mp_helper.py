@@ -7,12 +7,12 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
     segments = []
     obj_pos, obj_quat = obj_pose
 
-    # plan pick motion
+    # plan pre-pick motion
     grasp_pos, grasp_quat = compute_grasp_pose(obj_pos, obj_quat)
 
     target = {
         "ee_pos": torch.from_numpy(grasp_pos).float().cuda()[None]
-        + torch.tensor([[0, 0, 0.107]]).cuda(),
+        + torch.tensor([[0, 0, 0.107]]).cuda() + torch.tensor([[0, 0, 0.06]]).cuda(),
         "ee_quat": torch.from_numpy(grasp_quat).float().cuda()[None],
     }
 
@@ -27,14 +27,39 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
     traj = mp.plan_motion(start, target)
     segments.append(traj.position.cpu().numpy())
 
-    # plan retract motion
+    # plan pick motion
+    grasp_pos, grasp_quat = compute_grasp_pose(obj_pos, obj_quat)
+
+    target = {
+        "ee_pos": torch.from_numpy(grasp_pos).float().cuda()[None]
+        + torch.tensor([[0, 0, 0.107]]).cuda(),
+        "ee_quat": torch.from_numpy(grasp_quat).float().cuda()[None],
+    }
 
     start = {
         # "ee_pos": target["ee_pos"],
         # "ee_quat": target["ee_quat"],
         "qpos": torch.from_numpy(segments[-1][-1])
         .float()
-        .cuda()[None]
+        .cuda()[None],
+        # "qvel": torch.from_numpy(traj.velocity.cpu().numpy()[-1])
+        # .float()
+        # .cuda()[None],
+    }
+
+    traj = mp.plan_motion(start, target)
+    segments.append(traj.position.cpu().numpy())
+
+    # plan retract motion
+    start = {
+        # "ee_pos": target["ee_pos"],
+        # "ee_quat": target["ee_quat"],
+        "qpos": torch.from_numpy(segments[-1][-1])
+        .float()
+        .cuda()[None],
+        # "qvel": torch.from_numpy(traj.velocity.cpu().numpy()[-1])
+        # .float()
+        # .cuda()[None],
     }
     target = {
         "ee_pos": target["ee_pos"] + torch.tensor([[0, 0, 0.2]]).cuda(),

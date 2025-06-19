@@ -48,8 +48,12 @@ class CuroboWrapper:
         self.interpolation_dt = interpolation_dt
 
         # create configs
+        data_dict_in = load_yaml(join_path(get_robot_configs_path(), robot_file))["robot_cfg"]
+        # increase velocity scale to 1.0
+        data_dict_in["kinematics"]["cspace"]["velocity_scale"] = [1.0] * 10
+        # import IPython; IPython.embed()
         robot_cfg = RobotConfig.from_dict(
-            load_yaml(join_path(get_robot_configs_path(), robot_file))["robot_cfg"],
+            data_dict_in,
             self.tensor_args,
         )
         world_cfg = WorldConfig.from_dict(
@@ -75,20 +79,28 @@ class CuroboWrapper:
                 robot_cfg,
                 world_cfg,
                 self.tensor_args,
+
                 interpolation_dt=self.interpolation_dt,
-                # # Zoey params
+                trajopt_tsteps=34,
+                grad_trajopt_iters=500,
+                trajopt_dt=0.5,
+                js_trajopt_dt=0.5,
+
+                # Zoey params
                 # trajopt_tsteps=50,
+                # grad_trajopt_iters=500,
+                # trajopt_dt=0.5,
+                # js_trajopt_dt=0.5,
+                # js_trajopt_tsteps=34,
+
                 # interpolation_steps=10000,
                 # rotation_threshold=0.01,
                 # position_threshold=0.001,
                 # num_ik_seeds=100,
                 # num_trajopt_seeds=50,
                 # collision_checker_type=CollisionCheckerType.PRIMITIVE,
-                # grad_trajopt_iters=500,
-                # trajopt_dt=0.5,
+
                 # evaluate_interpolated_trajectory=True,
-                # js_trajopt_dt=0.5,
-                # js_trajopt_tsteps=34,
                 # velocity_scale=[0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.5, 0.5]
             )
             self.motion_gen = MotionGen(motion_gen_config)
@@ -134,11 +146,21 @@ class CuroboWrapper:
             qpos = start["qpos"]
         else:
             raise ValueError("Invalid start state")
-        start = JointState.from_position(
-            qpos,
-            self.kin_model.joint_names,
-            # self.tensor_args.to_device([qpos]), self.kin_model.joint_names
-        )
+        
+        if "qvel" in start:
+            qvel = start["qvel"]
+            start = JointState.from_numpy(
+                joint_names=self.kin_model.joint_names,
+                position=qpos,
+                velocity=qvel,
+                # self.tensor_args.to_device([qpos]), self.kin_model.joint_names
+            )
+        else:
+            start = JointState.from_position(
+                position=qpos,
+                joint_names=self.kin_model.joint_names,
+                # self.tensor_args.to_device([qpos]), self.kin_model.joint_names
+            )
 
         if "ee_pos" in target and "ee_quat" in target:
             target_ee_pos, target_ee_quat = target["ee_pos"], target["ee_quat"]

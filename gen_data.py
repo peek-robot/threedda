@@ -26,12 +26,10 @@ def visualize_points(env):
     
 if __name__ == "__main__":
 
-    n_episodes = 10000
+    n_episodes = 1000
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
     
-    outfile = f"blue_cube_{n_episodes}_128_abs_joint_vis_aug.hdf5"
-    # outfile = f"blue_cube_{n_episodes}_128_abs_joint_vis_aug_custom.hdf5"
-    # outfile = f"debug_vis_aug.hdf5"
+    outfile = f"blue_cube_{n_episodes}_fast_path_mask.hdf5"
 
     from utils.pointclouds import read_calibration_file
     # calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_realsense.json"
@@ -57,14 +55,14 @@ if __name__ == "__main__":
         # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
         # "obj_color_dist": [[0, 0, 1], [0, 0, 1]],
         "seed": 0,
-        "obs_keys": ["ee_pos", "ee_pose", "qpos", "qpos_normalized", "gripper_state", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
+        "obs_keys": ["ee_pos", "ee_pose", "qpos", "qpos_normalized", "gripper_state_discrete", "gripper_state_continuous", "gripper_state_normalized", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
         
         # RobotEnv
         "camera_name": "custom",
         # render in higher res to ensure full scene is captured
         "img_render": [480, 480],
         # resize to lower res to reduce memory usage and speed up training
-        "img_resize": [128, 128], # [224, 224],
+        "img_resize": [128, 128],
         "calib_dict": calib_dict,
         "n_steps": 50,
         "time_steps": 0.002,
@@ -75,8 +73,8 @@ if __name__ == "__main__":
 
     data_config = {
         "n_episodes": n_episodes,
-        "visual_augmentation": True,
-        "action_noise_std": 0.0, # 5e-3,
+        "visual_augmentation": False,
+        "action_noise_std": 0.0,
         "train_valid_split": 0.99,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
@@ -99,7 +97,7 @@ if __name__ == "__main__":
             env.randomize()
     
         env.reset_objs()
-        if env.num_objs == 1:
+        if data_config["visual_augmentation"] and env.num_objs == 1:
             env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
 
 
@@ -116,25 +114,69 @@ if __name__ == "__main__":
         # plan pick motion
         segments = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
 
-        # execute
-        # skip some steps to speed up execution
-        for qpos in segments[0][3:-3]:
+        from typing import List
+        def subsample_min_velocity(qpos: np.ndarray, min_velocity: float, req_indices: List[int]):
+            indices = [0]
+            last_idx = 0
+            for i in range(1, len(qpos)):
+                if i == req_indices[0]:
+                    indices.append(i)
+                    last_idx = i
+                    continue
+                velocity = np.linalg.norm(qpos[i] - qpos[last_idx])
+                if velocity >= min_velocity:
+                    indices.append(i)
+                    last_idx = i
+            return indices
+        
+        last_indices = []
+        cumsum = 0
+        for segment in segments:
+            cumsum += len(segment)
+            last_indices.append(cumsum)
+
+        grippers = np.concatenate([np.ones(len(segments[0])), np.ones(len(segments[1])), np.zeros(len(segments[2]))])
+        qposs = np.concatenate(segments)
+        indices = subsample_min_velocity(qposs, 0.05, last_indices)
+        
+        for qpos, gripper in zip(qposs[indices], grippers[indices]):
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
             if env_config["controller"] == "rel_joint":
-                act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
+                act = np.concatenate((qpos - prev_qpos + noise, [gripper]))
             else:
-                act = np.concatenate((qpos + noise, [1.0]))
+                act = np.concatenate((qpos + noise, [gripper]))
             data_collector.step(act)
             prev_qpos = env.get_qpos()
 
-        for qpos in segments[1][3:-3]:
-            noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
-            if env_config["controller"] == "rel_joint":
-                act = np.concatenate((qpos - prev_qpos + noise, [0.0]))
-            else:
-                act = np.concatenate((qpos + noise, [0.0]))
-            data_collector.step(act)
-            prev_qpos = env.get_qpos()
+        # # execute
+        # # skip some steps to speed up execution
+        # for qpos in segments[0][::2]:
+        #     noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
+        #     if env_config["controller"] == "rel_joint":
+        #         act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
+        #     else:
+        #         act = np.concatenate((qpos + noise, [1.0]))
+        #     data_collector.step(act)
+        #     prev_qpos = env.get_qpos()
+
+        # # grasp
+        # for qpos in segments[1][::2]:
+        #     noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
+        #     if env_config["controller"] == "rel_joint":
+        #         act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
+        #     else:
+        #         act = np.concatenate((qpos + noise, [1.0]))
+        #     data_collector.step(act)
+        #     prev_qpos = env.get_qpos()
+
+        # for qpos in segments[2][::2]:
+        #     noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
+        #     if env_config["controller"] == "rel_joint":
+        #         act = np.concatenate((qpos - prev_qpos + noise, [0.0]))
+        #     else:
+        #         act = np.concatenate((qpos + noise, [0.0]))
+        #     data_collector.step(act)
+        #     prev_qpos = env.get_qpos()
 
         # import matplotlib.pyplot as plt
         # qpos = np.array(data["qpos"])
