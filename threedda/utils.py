@@ -94,7 +94,8 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
 
     if obs_crop:
         from utils.pointclouds import zero_points
-        points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
+        # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
+        points, colors = zero_points(points, colors, crop_min=[0.3, -0.2, -0.1], crop_max=[0.7, 0.2, 0.3])
     
     points = points.reshape(B, H, W, 3)
     colors = colors.reshape(B, H, W, 3)
@@ -118,7 +119,7 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
         batch = {k: v.to(device) for k, v in batch.items()}
     return batch
 
-def get_model(da_config):
+def get_model(da_config, device="cpu"):
 
     assert da_config.action_space in ["abs_ee", "joint"], "Invalid action space: {}".format(da_config.action_space)
 
@@ -165,6 +166,7 @@ def get_model(da_config):
             lang_enhanced=False
         )
 
+    model.to(device)
     return model
 
 def get_optimizer(model, lr=1e-4):
@@ -183,7 +185,7 @@ def get_optimizer(model, lr=1e-4):
     
     return optimizer
 
-def load_checkpoint(checkpoint):
+def load_checkpoint(checkpoint, device="cpu"):
     """Load from checkpoint."""
     print("=> loading checkpoint '{}'".format(checkpoint))
 
@@ -192,13 +194,14 @@ def load_checkpoint(checkpoint):
     model_config = ckpt_dict["model_config"]
     model = get_model(model_config)
     model.load_state_dict(ckpt_dict["model_state_dict"])
-
+    model.to(device)
+    
     optimizer = get_optimizer(model, lr=model_config.lr)
     if 'optimizer_state_dict' in ckpt_dict:
         optimizer.load_state_dict(ckpt_dict["optimizer_state_dict"])
         for p in range(len(optimizer.param_groups)):
             optimizer.param_groups[p]['lr'] = model_config.lr
-    
+
     start_iter = ckpt_dict.get("iter", 0)
     best_loss = ckpt_dict.get("best_loss", None)
 
