@@ -515,7 +515,8 @@ class CubeEnv(RobotEnv):
                         selected.append(pt)
                         if len(selected) == N:
                             return selected
-        box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.06)
+        box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.12)
+        # box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.06)
         
         for _ in range(self.num_objs):
             # box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
