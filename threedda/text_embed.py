@@ -4,13 +4,14 @@ import transformers
 
 class CLIPTextEmbedder():
 
-    def __init__(self):
-        self.device = "cpu"
+    def __init__(self, device="cpu"):
+        self.device = device
         self.text_model = transformers.CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
         self.text_model = self.text_model
         self.tokenizer = transformers.CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
         self.tokenizer.model_max_length = 53
         self.cache = {}
+        self.to(device)
 
     def to(self, device):
         self.device = device
