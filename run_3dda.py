@@ -265,6 +265,7 @@ def train(
                     obs_noise_std=model_config.obs_noise_std,
                     obs_crop=model_config.obs_crop,
                     obs_path=model_config.obs_path,
+                    obs_mask=model_config.obs_mask,
                     device=device,
                 )
 
@@ -319,24 +320,26 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        if epoch % 50 == 0 and epoch > 0:
+        if epoch % 50 == 0 and epoch > 100:
+            eval_mode = "closed_loop" if model_config.obs_mask or model_config.obs_path else "open_loop"
             successes, videos = eval_3dda(
                 policy=model,
                 model_config=model_config,
                 data_path=dataset,
-                mode="closed_loop",
+                mode=eval_mode,
                 action_chunking=True,
-                n_rollouts=1,
+                action_chunk_size=8,
+                n_rollouts=10,
                 n_steps=70,
                 clip_embedder=clip_embedder,
             )
-            wandb.log({"epoch": epoch, "test/success_rate": np.mean(successes)})
+            wandb.log({"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)})
             for i, video in enumerate(videos):
                 wandb.log(
                     {
                         "epoch": epoch,
-                        f"test/videos_{i}": wandb.Video(
-                            video.transpose(0, 3, 1, 2), fps=30, format="gif"
+                        f"eval/{eval_mode}/videos_{i}": wandb.Video(
+                            video.transpose(0, 3, 1, 2), fps=10, format="gif"
                         ),
                     }
                 )
@@ -446,8 +449,8 @@ if __name__ == "__main__":
         [
             # [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0.0],
             # [ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973, 0.04]
-            [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0.0],
-            [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973, 1.0],
+            [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973],
+            [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],
         ]
     )
     # with h5py.File(args.dataset, "r") as f:
@@ -459,7 +462,7 @@ if __name__ == "__main__":
     from argparse import Namespace
 
     model_config = {
-        "num_epochs": 500,
+        "num_epochs": 250,
         "epoch_every_n_steps": 100,
         "horizon": 16,
         "history": args.history,
@@ -543,16 +546,13 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     from threedda.text_embed import CLIPTextEmbedder
-
-    clip_embedder = CLIPTextEmbedder()
-    clip_embedder = clip_embedder.to(device)
+    clip_embedder = CLIPTextEmbedder(device=device)
 
     if args.resume:
 
         model, optimizer, start_epoch, best_loss, wandb_config, model_config = (
-            load_checkpoint(os.path.join(output_dir, "last.pth"))
+            load_checkpoint(os.path.join(output_dir, "last.pth"), device=device)
         )
-        model.to(device)
 
         wandb.init(
             entity=wandb_config["entity"],
@@ -565,8 +565,8 @@ if __name__ == "__main__":
         start_epoch = 0
         best_loss = None
 
-        model = get_model(model_config)
-        model = model.to(device)
+        model = get_model(model_config, device=device)
+        
         optimizer = get_optimizer(model, lr=model_config.lr)
 
         configs = {
