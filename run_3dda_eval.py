@@ -55,7 +55,8 @@ def eval_3dda(
     clip_embedder=None,
     ckpt_path=None,
     mode="closed_loop",
-    action_chunking=False,
+    action_chunking=True,
+    action_chunk_size=8,
     n_rollouts=10,
     n_steps=50,
 ):
@@ -72,14 +73,13 @@ def eval_3dda(
         clip_embedder = CLIPTextEmbedder()
         clip_embedder = clip_embedder.to(device)
 
-    # load normalization data
-    if mode == "open_loop" or mode == "replay":
-        with h5py.File(data_path, "r", swmr=True) as f:
-            env_config = json.loads(f["data"].attrs["env_args"])["env_kwargs"]
-            action_min, action_max = (
-                f["data"].attrs["actions_min"],
-                f["data"].attrs["actions_max"],
-            )
+    # load env + normalization data
+    with h5py.File(data_path, "r", swmr=True) as f:
+        env_config = json.loads(f["data"].attrs["env_args"])["env_kwargs"]
+        action_min, action_max = (
+            f["data"].attrs["actions_min"],
+            f["data"].attrs["actions_max"],
+        )
 
     # init env
     env_config["seed"] += 1
@@ -161,15 +161,15 @@ def eval_3dda(
                 if action_chunking:
                     # HACK: speed up inference by not querying obs when executing action chunks
                     obs_keys_copy = env.obs_keys
-                    env.obs_keys = []
+                    env.obs_keys = ["rgb"]
 
                     # execute half the action chunk
-                    for act in acts[0].cpu().numpy()[:8]:
+                    for act in acts[0].cpu().numpy()[:action_chunk_size]:
                         pred_actions.append(act)
                         # discretize gripper action to ensure gripper_state is (0., 1.) as during data gen
                         act[7] = 1.0 if act[7] > 0.5 else 0.0
                         obs, r, done, info = env.step(act)
-
+                        imgs.append(obs["rgb"])
                     env.obs_keys = obs_keys_copy
                     obs = env.get_obs()
                 else:
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--mode", type=str, default="closed_loop")
     parser.add_argument(
-        "--action_chunking", action="store_true", help="Enable action chunking"
+        "--no_action_chunking", action="store_true", help="Enable action chunking"
     )
     parser.add_argument("--n_rollouts", type=int, default=10)
     parser.add_argument("--n_steps", type=int, default=70)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
         data_path=args.dataset,
         ckpt_path=ckpt_path,
         mode=args.mode,
-        action_chunking=args.action_chunking,
+        action_chunking=not args.no_action_chunking,
         n_rollouts=args.n_rollouts,
         n_steps=args.n_steps,
     )
