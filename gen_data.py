@@ -8,7 +8,7 @@ from utils.mp import CuroboWrapper
 from utils.robot_env import CubeEnv
 from utils.collector import DataCollector
 
-from utils.mp_helper import plan_pick_motion
+from utils.mp_helper import plan_pick_motion, plan_pick_and_place_motion, subsample_min_velocity
 
 def visualize_points(env):
     from utils.meshcat import create_visualizer, visualize_pointcloud
@@ -26,10 +26,20 @@ def visualize_points(env):
     
 if __name__ == "__main__":
 
-    n_episodes = 1000
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task", type=str, default="pick")
+    parser.add_argument("--num_samples", type=int, default=10)
+    parser.add_argument("--save_dir", type=str, default="/home/memmelma/Projects/robotic/gifs_curobo")
+    parser.add_argument("--visual_augmentation", action="store_true")
+    parser.add_argument("--drop_failures", action="store_true")
+    parser.add_argument("--identifier", type=str, default=None)
+    # parser.add_argument("--outfile", type=str, default="blue_cube_10_fast_path_mask.hdf5")
+    args = parser.parse_args()
+    
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
     
-    outfile = f"blue_cube_{n_episodes}_fast_path_mask.hdf5"
+    outfile = f"{args.task}_{args.num_samples}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     from utils.pointclouds import read_calibration_file
     # calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_realsense.json"
@@ -39,7 +49,7 @@ if __name__ == "__main__":
     env_config = {
         # CubeEnv
         "xml_path": "/home/memmelma/Projects/robotic/franka_emika_panda/scene.xml",
-        "num_objs": 1,
+        "num_objs": 2 if args.task == "pick_and_place" else 1,
         "size": 0.03,
         # # large randomization
         # "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
@@ -72,10 +82,10 @@ if __name__ == "__main__":
     env = CubeEnv(**env_config)
 
     data_config = {
-        "n_episodes": n_episodes,
-        "visual_augmentation": False,
+        "n_episodes": args.num_samples,
+        "visual_augmentation": args.visual_augmentation,
         "action_noise_std": 0.0,
-        "train_valid_split": 0.99,
+        "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
 
@@ -88,22 +98,19 @@ if __name__ == "__main__":
         train_valid_split=data_config["train_valid_split"],
     )
 
-    if data_config["visual_augmentation"]:
+    if args.visual_augmentation:
         env.init_randomize()
 
-    for i in trange(n_episodes):
+    successes = []
+    for i in trange(args.num_samples):
         
-        if data_config["visual_augmentation"]:
+        if args.visual_augmentation:
             env.randomize()
     
         env.reset_objs()
-        if data_config["visual_augmentation"] and env.num_objs == 1:
+        if args.visual_augmentation and env.num_objs == 1:
             env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
-
-
         data_collector.reset()
-
-        # visualize_points(env)
 
         # get initial state
         obj_poses = env.get_obj_poses()
@@ -111,35 +118,26 @@ if __name__ == "__main__":
         qpos = env.get_qpos()
         prev_qpos = env.get_qpos()
 
-        # plan pick motion
-        segments = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
-
-        from typing import List
-        def subsample_min_velocity(qpos: np.ndarray, min_velocity: float, req_indices: List[int]):
-            indices = [0]
-            last_idx = 0
-            for i in range(1, len(qpos)):
-                if i == req_indices[0]:
-                    indices.append(i)
-                    last_idx = i
-                    continue
-                velocity = np.linalg.norm(qpos[i] - qpos[last_idx])
-                if velocity >= min_velocity:
-                    indices.append(i)
-                    last_idx = i
-            return indices
+        # plan motion
+        if args.task == "pick_and_place":
+            place_pos, place_quat = obj_poses[7:10], obj_poses[10:14]
+            qpos_traj, gripper_traj = plan_pick_and_place_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), place_pose=(place_pos, place_quat), mp=mp)
+        elif args.task == "pick":
+            qpos_traj, gripper_traj = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
         
-        last_indices = []
+        # make sure end of each segment is preserved
+        req_indices = []
         cumsum = 0
-        for segment in segments:
+        for segment in qpos_traj:
             cumsum += len(segment)
-            last_indices.append(cumsum)
+            req_indices.append(cumsum)
+        # subsample motion to have minimum velocity
+        qpos_traj = np.concatenate(qpos_traj)
+        gripper_traj = np.concatenate(gripper_traj)
+        indices = subsample_min_velocity(qpos_traj, 0.05, req_indices=req_indices)
 
-        grippers = np.concatenate([np.ones(len(segments[0])), np.ones(len(segments[1])), np.zeros(len(segments[2]))])
-        qposs = np.concatenate(segments)
-        indices = subsample_min_velocity(qposs, 0.05, last_indices)
-        
-        for qpos, gripper in zip(qposs[indices], grippers[indices]):
+        # execute motion
+        for qpos, gripper in zip(qpos_traj[indices], gripper_traj[indices]):
             noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
             if env_config["controller"] == "rel_joint":
                 act = np.concatenate((qpos - prev_qpos + noise, [gripper]))
@@ -148,49 +146,12 @@ if __name__ == "__main__":
             data_collector.step(act)
             prev_qpos = env.get_qpos()
 
-        # # execute
-        # # skip some steps to speed up execution
-        # for qpos in segments[0][::2]:
-        #     noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
-        #     if env_config["controller"] == "rel_joint":
-        #         act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
-        #     else:
-        #         act = np.concatenate((qpos + noise, [1.0]))
-        #     data_collector.step(act)
-        #     prev_qpos = env.get_qpos()
-
-        # # grasp
-        # for qpos in segments[1][::2]:
-        #     noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
-        #     if env_config["controller"] == "rel_joint":
-        #         act = np.concatenate((qpos - prev_qpos + noise, [1.0]))
-        #     else:
-        #         act = np.concatenate((qpos + noise, [1.0]))
-        #     data_collector.step(act)
-        #     prev_qpos = env.get_qpos()
-
-        # for qpos in segments[2][::2]:
-        #     noise = np.random.normal(0, data_config["action_noise_std"], size=qpos.shape)
-        #     if env_config["controller"] == "rel_joint":
-        #         act = np.concatenate((qpos - prev_qpos + noise, [0.0]))
-        #     else:
-        #         act = np.concatenate((qpos + noise, [0.0]))
-        #     data_collector.step(act)
-        #     prev_qpos = env.get_qpos()
-
-        # import matplotlib.pyplot as plt
-        # qpos = np.array(data["qpos"])
-        # act = np.array(data["act"])
-        # prev_qpos = np.array(data["prev_qpos"])
-        # fig, axs = plt.subplots(7, 1, figsize=(10, 10), sharex=True)
-        # for j in range(qpos.shape[1]):
-        #     axs[j].plot(prev_qpos[:, j], label=f"prev_qpos_{j}")
-        #     axs[j].plot(qpos[:, j], label=f"qpos_{j}")
-        #     axs[j].plot(act[:, j], label=f"act_{j}")
-        # axs[0].legend()
-        # plt.savefig(os.path.join(save_dir, f"img_{i}.png"))
-        # import IPython; IPython.embed()
-
+        success = env.is_success(args.task)
+        successes.append(success)
+        if args.drop_failures and not success:
+            continue
+    
+        # visualize motion
         if i % 100 == 0 or i < 10:
             imgs = np.array(data_collector.obs["rgb"])
             imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
@@ -198,3 +159,4 @@ if __name__ == "__main__":
         data_collector.save()
 
     data_collector.close()
+    print(f"DONE! Success rate: {np.mean(successes)}")
