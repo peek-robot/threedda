@@ -8,3 +8,11 @@ results/
 __pycache__/
 *.gifs
 *.zip
+
+*.hdf5
+*.npz
+*.png
+*.gif
+tmp.xml
+launch.json
+MUJOCO.TXT
