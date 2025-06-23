@@ -57,9 +57,18 @@ def eval_3dda(
     mode="closed_loop",
     action_chunking=True,
     action_chunk_size=8,
-    n_rollouts=10,
-    n_steps=50,
+    n_rollouts=None,
+    n_steps=None,
+    path_mode=None, # "open_loop",
+    mask_mode=None, # "open_loop",
 ):
+
+    if "pick_and_place" in data_path:
+        task = "pick_and_place"
+    elif "pick" in data_path:
+        task = "pick"
+    else:
+        raise ValueError(f"Invalid task: {task}")
 
     if mode == "open_loop":
         action_chunking = False
@@ -81,8 +90,9 @@ def eval_3dda(
             f["data"].attrs["actions_max"],
         )
 
-    # init env
-    env_config["seed"] += 1
+    # set to ood seed if not using path or mask
+    if path_mode is None and mask_mode is None:
+        env_config["seed"] += 1
     # env_config["obs_keys"] = ["qpos", "gripper_state_continuous", "gripper_state_discrete", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"]
     env = CubeEnv(**env_config)
 
@@ -93,12 +103,20 @@ def eval_3dda(
     # HACK
     # data_path = "/home/memmelma/Projects/robotic/blue_cube_black_curtain.hdf5"
 
+    if (n_rollouts is None or n_steps is None) and task == "pick_and_place":
+        n_steps = 90
+        n_rollouts = 10
+    elif (n_rollouts is None or n_steps is None) and task == "pick":
+        n_steps = 70
+        n_rollouts = 25
+
     successes = []
     videos = []
+    instructions = []
     for i in trange(n_rollouts, desc="ROLLOUT"):
 
         # load open_loop and replay data
-        if mode == "open_loop" or mode == "replay":
+        if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
             demo_idx = i
             with h5py.File(data_path, "r", swmr=True) as f:
                 open_loop_obs = {
@@ -116,26 +134,35 @@ def eval_3dda(
 
         # reset everything
         env.reset_objs()
-        if mode == "open_loop" or mode == "replay":
+        if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
             env.set_obj_poses(obj_pose)
             env.set_obj_colors(obj_color)
 
         obs = env.reset()
+        obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
+
+        instructions.append(env.get_lang_instr())
 
         imgs = [obs["rgb"]]
         if mode == "open_loop":
             obs = {
                 k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
             }
+        if path_mode is not None:
+            obs["path"] = open_loop_obs["path"][0]
+        if mask_mode is not None:
+            obs["mask"] = open_loop_obs["mask"][0]
         framestack.add_obs(obs)
 
         pred_actions = []
         for j in range(n_steps):
 
             obs = framestack.get_obs_history()
-
+            
+            act_queue = []
             if mode == "replay":
                 act = open_loop_actions[j]
+                act_queue.append(act)
             else:
                 # add batch dimension, convert to torch
                 sample = {
@@ -151,50 +178,72 @@ def eval_3dda(
                     horizon=model_config.horizon,
                     obs_crop=model_config.obs_crop,
                     obs_noise_std=0.0,
-                    obs_path=model_config.obs_path,
+                    obs_path=path_mode is not None,
+                    obs_mask=mask_mode is not None,
                     device=device,
                 )
+
+                if path_mode is not None:
+                    rgb_obs = batch_prepared["rgb_obs"][0,0].permute(1,2,0).cpu().numpy() * 255.0
+                    imgs.append(rgb_obs.astype(np.uint8))
+                # if mask_mode is not None:
+                #     depth_obs = batch_prepared["pcd_obs"][0,0].permute(1,2,0).cpu().numpy()
+                #     imgs.append(depth_obs)
+                
                 # [B, T, 7+1]
                 with torch.no_grad():
                     acts = policy.forward(**batch_prepared, run_inference=True)
 
                 if action_chunking:
-                    # HACK: speed up inference by not querying obs when executing action chunks
-                    obs_keys_copy = env.obs_keys
-                    env.obs_keys = ["rgb"]
-
-                    # execute half the action chunk
-                    for act in acts[0].cpu().numpy()[:action_chunk_size]:
-                        pred_actions.append(act)
+                    for i, act in enumerate(acts[0].cpu().numpy()[:action_chunk_size]):
                         # discretize gripper action to ensure gripper_state is (0., 1.) as during data gen
                         act[7] = 1.0 if act[7] > 0.5 else 0.0
-                        obs, r, done, info = env.step(act)
-                        imgs.append(obs["rgb"])
-                    env.obs_keys = obs_keys_copy
-                    obs = env.get_obs()
+                        act_queue.append(act)
                 else:
                     act = acts.cpu().numpy()[0, 0]
                     # discretize gripper action to ensure gripper_state is (0., 1.) as during data gen
                     act[7] = 1.0 if act[7] > 0.5 else 0.0
-                    pred_actions.append(act)
-                    obs, r, done, info = env.step(act)
+                    act_queue.append(act)
 
-            imgs.append(obs["rgb"])
-            if mode == "open_loop":
-                obs = {
-                    k: v[j + 1]
-                    for k, v in open_loop_obs.items()
-                    if k in env_config["obs_keys"]
-                }
-            framestack.add_obs(obs)
+            for t, act in zip(reversed(range(len(act_queue))), act_queue):
+                pred_actions.append(act)
+                # # HACK: only render when required
+                # if t < num_frames:
+                #     obs_keys_copy = env.obs_keys
+                #     env.obs_keys = ["rgb"]
 
-            if env.is_success(task="pick"):
+                obs, r, done, info = env.step(act)
+                obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
+
+                if mode == "open_loop":
+                    obs = {
+                        k: v[j + 1]
+                        for k, v in open_loop_obs.items()
+                        if k in env_config["obs_keys"]
+                    }
+                if path_mode is not None:
+                    obs["path"] = open_loop_obs["path"][0]
+                if mask_mode is not None:
+                    obs["mask"] = open_loop_obs["mask"][0]
+                
+                # # HACK: only render when required
+                # if t < num_frames:
+                #     env.obs_keys = obs_keys_copy
+                framestack.add_obs(obs)
+                imgs.append(obs["rgb"])
+
+                # check for success
+                success = env.is_success(task=task)
+                if success:
+                    break
+            if success:
                 break
-
-        successes.append(env.is_success(task="pick"))
+            
+        successes.append(success)
         videos.append(np.array(imgs))
 
         if mode == "open_loop" or mode == "replay":
+            # TODO fix save_dir when running from train script
             plot_actions(
                 np.stack(pred_actions),
                 denormalize(open_loop_actions, min=action_min, max=action_max),
@@ -214,7 +263,7 @@ def eval_3dda(
     print(
         f"{mode} {'act chunking' if action_chunking else ''} Success rate: {np.mean(successes)}"
     )
-    return successes, videos
+    return successes, videos, instructions
 
 
 if __name__ == "__main__":
@@ -236,21 +285,25 @@ if __name__ == "__main__":
     )
     parser.add_argument("--n_rollouts", type=int, default=10)
     parser.add_argument("--n_steps", type=int, default=70)
+    parser.add_argument("--path_mode", type=str, default=None)
+    parser.add_argument("--mask_mode", type=str, default=None)
 
     args = parser.parse_args()
 
     ckpt_path = f"/home/memmelma/Projects/robotic/results/{args.name}/{args.ckpt}.pth"
 
-    successes, videos = eval_3dda(
+    successes, videos, instructions = eval_3dda(
         data_path=args.dataset,
         ckpt_path=ckpt_path,
         mode=args.mode,
         action_chunking=not args.no_action_chunking,
         n_rollouts=args.n_rollouts,
         n_steps=args.n_steps,
+        path_mode=args.path_mode,
+        mask_mode=args.mask_mode,
     )
 
     save_dir = os.path.join(os.path.dirname(ckpt_path), args.mode)
     os.makedirs(save_dir, exist_ok=True)
-    for i, video in enumerate(videos):
-        imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), video)
+    for i, (video, instruction) in enumerate(zip(videos, instructions)):
+        imageio.mimsave(os.path.join(save_dir, f"img_{instruction}_{i}.gif"), video)

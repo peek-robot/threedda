@@ -107,15 +107,22 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
         + torch.tensor([[0, 0, cube_offset]]).cuda(),
         "ee_quat": torch.from_numpy(place_quat).float().cuda()[None],
     }
-    place_gripper = 0
+    place_gripper = 0    
+    pre_place_target = {
+        "ee_pos": torch.from_numpy(place_pos).float().cuda()[None]
+        + torch.tensor([[0, 0, gripper_offset]]).cuda()
+        + torch.tensor([[0, 0, cube_offset]]).cuda() * 2,
+        "ee_quat": torch.from_numpy(place_quat).float().cuda()[None],
+    }
+    pre_place_gripper = 0
     # HACK: interpolate between place and pre-grasp target + add z offset to avoid collision
     place_grasp = (place_target["ee_pos"] + pre_grasp_target["ee_pos"]) / 2
     place_grasp[0, 2] += 0.05
-    pre_place_target = {
+    inter_place_target = {
         "ee_pos": place_grasp,
         "ee_quat": grasp_target["ee_quat"],
     }
-    pre_place_gripper = 0
+    inter_place_gripper = 0
 
     # define start
     if ee_pose is not None:
@@ -130,8 +137,8 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
     qpos_traj = []
     gripper_traj = []
     for gripper, target in zip(
-        [pre_grasp_gripper, grasp_gripper, pre_place_gripper, place_gripper],
-        [pre_grasp_target, grasp_target, pre_place_target, place_target],
+        [pre_grasp_gripper, grasp_gripper, inter_place_gripper, pre_place_gripper, place_gripper],
+        [pre_grasp_target, grasp_target, inter_place_target, pre_place_target, place_target],
     ):
         traj = mp.plan_motion(start, target)
         qpos_traj.append(traj.position.cpu().numpy())

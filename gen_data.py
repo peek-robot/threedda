@@ -30,6 +30,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=str, default="pick")
     parser.add_argument("--num_samples", type=int, default=10)
+    parser.add_argument("--num_objs", type=int, default=1)
     parser.add_argument("--save_dir", type=str, default="/home/memmelma/Projects/robotic/gifs_curobo")
     parser.add_argument("--visual_augmentation", action="store_true")
     parser.add_argument("--drop_failures", action="store_true")
@@ -39,23 +40,28 @@ if __name__ == "__main__":
     
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
     
-    outfile = f"{args.task}_{args.num_samples}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
+    outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     from utils.pointclouds import read_calibration_file
     # calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_realsense.json"
     calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_zed.json"
     calib_dict = read_calibration_file(calib_file)
     
+    from threedda.text_embed import CLIPTextEmbedder
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    clip_embedder = CLIPTextEmbedder(device=device)
+
     env_config = {
         # CubeEnv
-        "xml_path": "/home/memmelma/Projects/robotic/franka_emika_panda/scene.xml",
-        "num_objs": 2 if args.task == "pick_and_place" else 1,
-        "size": 0.03,
+        "xml_path": "/home/memmelma/Projects/robotic/franka_emika_panda/scene_new.xml",
+        "num_objs": args.num_objs,
+        "size": 0.0275,
         # # large randomization
         # "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
         # "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 4, np.pi / 4]],
         # # medium randomization
-        "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
+        # "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
+        "obj_pos_dist": [[0.3, -0.2, 0.03], [0.7, 0.2, 0.03]],
         "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
         # # small randomization
         # "obj_pos_dist": [[0.5, -0.1, 0.03], [0.6, 0.1, 0.03]],
@@ -65,7 +71,7 @@ if __name__ == "__main__":
         # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
         # "obj_color_dist": [[0, 0, 1], [0, 0, 1]],
         "seed": 0,
-        "obs_keys": ["ee_pos", "ee_pose", "qpos", "qpos_normalized", "gripper_state_discrete", "gripper_state_continuous", "gripper_state_normalized", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
+        "obs_keys": ["lang_instr", "ee_pos", "ee_pose", "qpos", "qpos_normalized", "gripper_state_discrete", "gripper_state_continuous", "gripper_state_normalized", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
         
         # RobotEnv
         "camera_name": "custom",
@@ -77,7 +83,7 @@ if __name__ == "__main__":
         "n_steps": 50,
         "time_steps": 0.002,
         "reset_qpos_noise_std": 1e-2,
-        "controller": "abs_joint",
+        "controller": "abs_joint"
     }
     env = CubeEnv(**env_config)
 
@@ -96,6 +102,8 @@ if __name__ == "__main__":
         save_dir=save_dir,
         out_file=outfile,
         train_valid_split=data_config["train_valid_split"],
+        lang_key="lang_instr",
+        clip_embedder=clip_embedder,
     )
 
     if args.visual_augmentation:
@@ -119,11 +127,15 @@ if __name__ == "__main__":
         prev_qpos = env.get_qpos()
 
         # plan motion
-        if args.task == "pick_and_place":
-            place_pos, place_quat = obj_poses[7:10], obj_poses[10:14]
-            qpos_traj, gripper_traj = plan_pick_and_place_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), place_pose=(place_pos, place_quat), mp=mp)
-        elif args.task == "pick":
-            qpos_traj, gripper_traj = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
+        try:
+            if args.task == "pick_and_place":
+                place_pos, place_quat = obj_poses[7:10], obj_poses[10:14]
+                qpos_traj, gripper_traj = plan_pick_and_place_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), place_pose=(place_pos, place_quat), mp=mp)
+            elif args.task == "pick":
+                qpos_traj, gripper_traj = plan_pick_motion(qpos=qpos, obj_pose=(obj_pos, obj_quat), mp=mp)
+        except ValueError as e:
+            print(f"Failed to plan motion: {e}")
+            continue
         
         # make sure end of each segment is preserved
         req_indices = []
@@ -157,6 +169,6 @@ if __name__ == "__main__":
             imageio.mimsave(os.path.join(save_dir, f"img_{i}.gif"), imgs)
 
         data_collector.save()
-
+        
     data_collector.close()
     print(f"DONE! Success rate: {np.mean(successes)}")

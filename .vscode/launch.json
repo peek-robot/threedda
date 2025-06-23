@@ -18,6 +18,73 @@
             "request": "launch",
             "program": "/home/memmelma/Projects/robotic/gen_data.py",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "gen_pnp_data.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/memmelma/Projects/robotic/gen_pnp_data.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "train.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/scripts/train.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--name",
+                "debug",
+                "--config",
+                "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/config/default_templates/base_rgb.json",
+                "--dataset",
+                "/home/memmelma/Projects/robotic/gifs_curobo/blue_cube_250_128_no_noise.hdf5"
+            ]
+        },
+        {
+            "name": "train.py (profile)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "cProfile",
+            "args": [
+                "-o", "/tmp/train_profile.stats",
+                "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/scripts/train.py",
+                "--name",
+                "debug",
+                "--config",
+                "/home/memmelma/Projects/robotic/robomimic_pcd/robomimic/config/default_templates/base_rgb.json",
+                "--dataset",
+                "/home/memmelma/Projects/robotic/gifs_curobo/blue_cube_250_128_no_noise.hdf5"
+            ],
+            "console": "integratedTerminal",
+            "postDebugTask": "Launch SnakeViz"
+        },
+        {
+            "name": "run_3dda.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/memmelma/Projects/robotic/run_3dda.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "args": [
+                "--name",
+                "debugr",
+                "--dataset",
+                "/home/memmelma/Projects/robotic/gifs_curobo/red_cube_100_closeup.hdf5"
+            ]
+        },
+        {
+            "name": "run_3dda_eval.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/memmelma/Projects/robotic/run_3dda_eval.py",
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1"
+            }
         }
+        
     ]
 }

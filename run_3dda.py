@@ -175,21 +175,22 @@ def train(
                     train_losses[k] = []
                 train_losses[k].append(v.item())
 
+        # logging
+        wandb.log(
+            {
+                "epoch": epoch,
+                **{f"train/{k}": sum(v) / len(v) for k, v in train_losses.items()},
+            }
+        )
+        act_dim = acts.shape[-1]
+        plot_actions_and_log_wandb(
+            acts.cpu().numpy().reshape(-1, act_dim),
+            batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim),
+            "train/actions",
+            epoch,
+        )
+
         if epoch == 0:
-            # logging
-            wandb.log(
-                {
-                    "epoch": epoch,
-                    **{f"train/{k}": sum(v) / len(v) for k, v in train_losses.items()},
-                }
-            )
-            act_dim = acts.shape[-1]
-            plot_actions_and_log_wandb(
-                acts.cpu().numpy().reshape(-1, act_dim),
-                batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim),
-                "train/actions",
-                epoch,
-            )
 
             # log clip features
             rgb_prep = batch_prepared["rgb_obs"][:9]
@@ -320,27 +321,27 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        if epoch % 50 == 0 and epoch > 100:
-            eval_mode = "closed_loop" if model_config.obs_mask or model_config.obs_path else "open_loop"
-            successes, videos = eval_3dda(
+        if (epoch % 100 == 0 and epoch > 300):
+            eval_mode = "closed_loop"
+            successes, videos, instructions = eval_3dda(
                 policy=model,
                 model_config=model_config,
                 data_path=dataset,
                 mode=eval_mode,
                 action_chunking=True,
                 action_chunk_size=8,
-                n_rollouts=10,
-                n_steps=70,
                 clip_embedder=clip_embedder,
+                path_mode="open_loop" if model_config.obs_path else None,
+                mask_mode="open_loop" if model_config.obs_mask else None,
             )
             wandb.log({"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)})
-            for i, video in enumerate(videos):
+            for i, (video, instruction) in enumerate(zip(videos, instructions)):
                 wandb.log(
                     {
                         "epoch": epoch,
-                        f"eval/{eval_mode}/videos_{i}": wandb.Video(
+                        f"eval/{eval_mode}/{instruction}_{i}": wandb.Video(
                             video.transpose(0, 3, 1, 2), fps=10, format="gif"
-                        ),
+                        )
                     }
                 )
 
@@ -397,6 +398,11 @@ if __name__ == "__main__":
         help="use path rgb",
     )
     parser.add_argument(
+        "--obs_mask",
+        action="store_true",
+        help="use mask",
+    )
+    parser.add_argument(
         "--obs_noise_std",
         type=float,
         default=0.01,
@@ -415,11 +421,6 @@ if __name__ == "__main__":
         help="history",
     )
     parser.add_argument(
-        "--obs_mask",
-        action="store_true",
-        help="use mask",
-    )
-    parser.add_argument(
         "--augment_pcd",
         action="store_true",
         help="augment pcd",
@@ -430,9 +431,9 @@ if __name__ == "__main__":
         help="augment rgb",
     )
     parser.add_argument(
-        "--unnormalize_loss",
+        "--normalize_loss",
         action="store_true",
-        help="unnormalize loss",
+        help="normalize loss",
     )
     # parse arguments
     args = parser.parse_args()
@@ -462,7 +463,7 @@ if __name__ == "__main__":
     from argparse import Namespace
 
     model_config = {
-        "num_epochs": 250,
+        "num_epochs": 1000,
         "epoch_every_n_steps": 100,
         "horizon": 16,
         "history": args.history,
@@ -476,7 +477,7 @@ if __name__ == "__main__":
         "joint_loc_bounds": joint_loc_bounds,
         "gripper_loc_bounds": None,
         "loss_weights": [30, 1],
-        "unnormalize_loss": args.unnormalize_loss,
+        "normalize_loss": not args.normalize_loss,
         "image_size": (128, 128),  # (256, 256),
         # ablations
         "fps_subsampling_factor": args.fps_subsampling_factor,
@@ -489,6 +490,18 @@ if __name__ == "__main__":
     }
     model_config = Namespace(**model_config)
 
+    low_dim_keys = [
+        "qpos",
+        "qpos_normalized",
+        "gripper_state_continuous",
+        "gripper_state_discrete",
+        "lang_instr",
+    ]
+    if model_config.obs_path:
+        low_dim_keys.append("path")
+    if model_config.obs_mask:
+        low_dim_keys.append("mask")
+    
     ext_cfg = {
         "algo_name": "bc",
         "experiment": {
@@ -498,19 +511,12 @@ if __name__ == "__main__":
             "modalities": {
                 "obs": {
                     # "low_dim": ["qpos", "gripper_state", "path"],
-                    "low_dim": [
-                        "qpos",
-                        "qpos_normalized",
-                        "gripper_state_continuous",
-                        "gripper_state_discrete",
-                    ],
-                    "rgb": ["rgb"] if not model_config.obs_path else ["path_rgb"],
+                    "low_dim": low_dim_keys,
+                    "rgb": ["rgb"],
                     "depth": [],
                     "scan": [],
                     "pc": (
                         ["depth", "camera_intrinsic", "camera_extrinsic"]
-                        if not model_config.obs_mask
-                        else ["mask_depth", "camera_intrinsic", "camera_extrinsic"]
                     ),
                 },
             }
@@ -548,11 +554,13 @@ if __name__ == "__main__":
     from threedda.text_embed import CLIPTextEmbedder
     clip_embedder = CLIPTextEmbedder(device=device)
 
-    if args.resume:
+    resume_path = os.path.join(output_dir, "last.pth")
+    if args.resume and os.path.exists(resume_path):
 
         model, optimizer, start_epoch, best_loss, wandb_config, model_config = (
-            load_checkpoint(os.path.join(output_dir, "last.pth"), device=device)
+            load_checkpoint(resume_path, device=device)
         )
+        model_config.num_epochs = 2500
 
         wandb.init(
             entity=wandb_config["entity"],

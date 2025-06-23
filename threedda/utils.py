@@ -1,3 +1,8 @@
+import sys
+# sys.path.append("/home/marius/Projects/3d_diffuser_actor")
+sys.path.append("/home/memmelma/Projects/robotic/3d_diffuser_actor")
+from diffuser_actor import DiffuserActor, DiffuserJointer
+
 import os
 import wandb
 import torch
@@ -6,10 +11,6 @@ from torch import optim
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
-import sys
-# sys.path.append("/home/memmelma/Projects/3dda/3d_diffuser_actor")
-sys.path.append("/home/memmelma/Projects/robotic/3d_diffuser_actor")
-from diffuser_actor import DiffuserActor, DiffuserJointer
 
 def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.0):
     B, H, W = depth.shape
@@ -58,53 +59,71 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
     for k in sample["obs"].keys():
         sample["obs"][k] = sample["obs"][k][:, history-1]
 
-    # # # HACK
-    # path = True
-    # if path:
-    #     from utils.paths import generate_path_2d_from_obs, add_path_2d_to_img, smooth_path_rdp
-    #     # pass   
-    # #     paths = []
-    # #     for i in range(len(sample["obs"]["rgb"])):
-    # #         obs_np = {
-    # #             "ee_pos": sample["obs"]["ee_pos"][i].cpu().numpy(),
-    # #             "camera_intrinsic": sample["obs"]["camera_intrinsic"][i].cpu().numpy(),
-    # #             "camera_extrinsic": sample["obs"]["camera_extrinsic"][i].cpu().numpy(),
-    # #         }
-    # #         path = generate_path_2d_from_obs(obs_np)
-    # #         # TODO fix the tolerance to account for unscaled path
-    # #         path_smooth = smooth_path_rdp(path, tolerance=8)
-    # #         paths.append(path_smooth)
-        
-    #     for i in range(len(sample["obs"]["path"])):
-    #         img = sample["obs"]["rgb"][i].cpu().numpy()
-    #         path = sample["obs"]["path"][i].cpu().numpy()
-    #         # unpad path, removing [0,0] values
-
-    #         sample["obs"]["rgb"][i] = torch.from_numpy(add_path_2d_to_img(img, path)).to(device)
-
-            # import matplotlib.pyplot as plt
-            # plt.imsave(f"path_img.png", img)
-    
-    img_key = "rgb" if not obs_path else "path_rgb"
-    depth_key = "depth" if not obs_mask else "mask_depth"
-    
+    img_key = "rgb"
+    depth_key = "depth"
+    tmp_device = sample["obs"][depth_key].device
     B, H, W = sample["obs"][depth_key].shape
+
+    # store path as 2d image
+    if obs_path:
+        from utils.paths import add_path_2d_to_img
+        path_rgbs = []
+        for path, rgb in zip(sample["obs"]["path"], sample["obs"]["rgb"]):
+            # unpad path
+            m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
+            path_unpad = path[m]
+            # add path to rgb
+            path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
+            path_rgbs.append(torch.from_numpy(path_rgb))
+        sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
+
+    # store mask as 2d depth
+    if obs_mask:
+        from utils.paths import add_mask_2d_to_img
+        mask_depths = []
+        for mask, depth in zip(sample["obs"]["mask"], sample["obs"]["depth"]):
+            # unpad mask
+            m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
+            mask_unpad = mask[m]
+            # add mask to depth
+            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=int(H * 0.15))
+            mask_depths.append(torch.from_numpy(mask_depth))
+        sample["obs"][depth_key] = torch.stack(mask_depths, dim=0).to(tmp_device)
+
     points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
 
     if obs_crop:
-        from utils.pointclouds import zero_points
+        
+        def zero_points(points, colors=None, crop_min=[-1.0, -1.0, -0.2], crop_max=[1.0, 1.0, 1.0]):
+            crop_min = torch.tensor(crop_min, device=points.device).view(1, 1, 3)
+            crop_max = torch.tensor(crop_max, device=points.device).view(1, 1, 3)
+
+            mask_min = (points > crop_min).all(dim=-1)
+            mask_max = (points < crop_max).all(dim=-1)
+            valid_mask = mask_min & mask_max
+
+            points[~valid_mask] = 0.
+            if colors is not None:
+                colors[~valid_mask] = 0.
+            return points, colors
+
+        # # no table surface
         # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
-        points, colors = zero_points(points, colors, crop_min=[0.3, -0.2, -0.1], crop_max=[0.7, 0.2, 0.3])
+
+        # # just the table
+        # points, colors = zero_points(points, colors, crop_min=[0.3, -0.2, -0.1], crop_max=[0.7, 0.2, 0.3])
+
+        # # full workspace + robot
+        points, colors = zero_points(points, colors, crop_min=[0., -0.25, -0.1], crop_max=[0.8, 0.25, 0.8])
     
     points = points.reshape(B, H, W, 3)
     colors = colors.reshape(B, H, W, 3)
     pcd_obs = points.permute(0, 3, 1, 2).unsqueeze(1).float()
     rgb_obs = colors.permute(0, 3, 1, 2).unsqueeze(1).float() / 255.0
 
-    instructions = ["pick the red cube"] * B
-    instruction = torch.stack([clip_embedder.embed_instruction(instr) for instr in instructions])
-
+    instruction = sample["obs"]["lang_instr"][:, :, history-1]
+    
     trajectory_mask = torch.full((B, horizon, gt_trajectory.shape[-1]), False).float()
 
     batch = {

@@ -473,13 +473,18 @@ class CubeEnv(RobotEnv):
         self.seed = seed
         self.obs_keys = obs_keys
 
+        self.new_setup = False
+        if "new" in xml_path:
+            self.new_setup = True
+        
+
         self.num_objs = num_objs
-        self.size = size
+        self.obj_size = size
         self.obj_pos_dist = obj_pos_dist
         self.obj_ori_dist = obj_ori_dist
         # self.obj_color_dist = obj_color_dist
-        np.random.seed(self.seed)
-        modified_xml_path = self.generate_xml(xml_path, self.num_objs, self.size)
+        np.random.seed(self.seed)    
+        modified_xml_path = self.generate_xml(xml_path, self.num_objs, self.obj_size)
         super().__init__(modified_xml_path, **kwargs)
 
         self.obj_names = [f"cube_{i}" for i in range(num_objs)]
@@ -515,12 +520,15 @@ class CubeEnv(RobotEnv):
                         selected.append(pt)
                         if len(selected) == N:
                             return selected
-        box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.12)
+        box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.1)
         # box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.06)
         
         for _ in range(self.num_objs):
             # box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
-            box_pos = np.concatenate((box_poss[_], [0.03]))
+            if self.new_setup:
+                box_pos = np.concatenate((box_poss[_], [self.obj_size + 0.0075]))
+            else:
+                box_pos = np.concatenate((box_poss[_], [self.obj_size]))
 
             # ensure box is not too close to prev boxes
             # if len(obj_poses) > 0:
@@ -550,6 +558,7 @@ class CubeEnv(RobotEnv):
         self.set_obj_poses(obj_poses)
 
         main_colors = {
+            "scotch_blue": [0.03921569, 0.43529412, 0.79607843],
             "blue":    [0.0, 0.0, 1.0],
             "red":     [1.0, 0.0, 0.0],
             "green":   [0.0, 1.0, 0.0],
@@ -560,10 +569,25 @@ class CubeEnv(RobotEnv):
         colors = np.concatenate([main_colors[i] for i in np.random.choice(list(main_colors.keys()), size=self.num_objs, replace=False)], axis=0)
         
         if self.num_objs == 1:
-            colors = main_colors["blue"]
+            self.color_names = ["blue"]
+            colors = main_colors[self.color_names[0]]
         if self.num_objs == 2:
-            colors = np.concatenate([main_colors["blue"], main_colors["red"]], axis=0)
+            self.color_names = ["blue", "red"]
+            colors = np.concatenate([main_colors[self.color_names[0]], main_colors[self.color_names[1]]], axis=0)
+        if self.num_objs == 3:
+            # draw 3 colors from main_colors
+            self.color_names = np.random.choice(list(main_colors.keys()), size=3, replace=False)
+            colors = np.concatenate([main_colors[i] for i in self.color_names], axis=0)
         self.set_obj_colors(colors)
+
+    def get_lang_instr(self):
+        if self.num_objs == 1:
+            lang = f"pick up the {self.color_names[0]} cube"
+        elif self.num_objs == 2:
+            lang = f"put the {self.color_names[0]} cube on the {self.color_names[1]} cube"
+        elif self.num_objs == 3:
+            lang = f"put the {self.color_names[0]} cube on the {self.color_names[1]} cube"
+        return lang
 
     def set_obj_poses(self, obj_poses):
         for i, obj_qpos_id in enumerate(self.obj_qpos_ids):
@@ -606,7 +630,7 @@ class CubeEnv(RobotEnv):
             xml_path,
             num_objs=num_objs,
             mass=0.05,
-            size=size,
+            size=self.obj_size,
             colors=colors,
             orientation=False,
         )
@@ -619,6 +643,6 @@ class CubeEnv(RobotEnv):
         if task == "pick":
             return self.get_obj_poses()[2] > 0.1
         elif task == "pick_and_place":
-            return np.sum(np.abs(self.get_obj_poses()[:2] - self.get_obj_poses()[7:9])) < 0.06
+            return np.sum(np.abs(self.get_obj_poses()[:2] - self.get_obj_poses()[7:9])) < self.obj_size
         else:
             raise ValueError(f"Invalid task: {task}")
