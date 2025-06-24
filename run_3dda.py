@@ -24,7 +24,6 @@ from run_3dda_eval import eval_3dda
 
 import sys
 
-sys.path.append("/home/memmelma/Projects/robotic")
 from threedda.criterion import TrajectoryCriterion
 from threedda.utils import (
     get_model,
@@ -366,7 +365,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--outdir",
         type=str,
-        default="/home/memmelma/Projects/robotic/results/",
+        default="results/",
         help="path to output directory",
     )
     parser.add_argument(
@@ -441,7 +440,10 @@ if __name__ == "__main__":
     print(json.dumps(vars(args)))
 
     # fix CUDA issue with DataLoader
-    mp.set_start_method("spawn")
+    try:
+        mp.set_start_method("spawn")
+    except RuntimeError as e:
+        print(e)
 
     output_dir = os.path.join(args.outdir, args.name)
     os.makedirs(output_dir, exist_ok=True)

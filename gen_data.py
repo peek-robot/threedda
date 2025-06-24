@@ -31,20 +31,19 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, default="pick")
     parser.add_argument("--num_samples", type=int, default=10)
     parser.add_argument("--num_objs", type=int, default=1)
-    parser.add_argument("--save_dir", type=str, default="/home/memmelma/Projects/robotic/gifs_curobo")
+    parser.add_argument("--save_dir", type=str, default="data")
     parser.add_argument("--visual_augmentation", action="store_true")
     parser.add_argument("--drop_failures", action="store_true")
     parser.add_argument("--identifier", type=str, default=None)
     # parser.add_argument("--outfile", type=str, default="blue_cube_10_fast_path_mask.hdf5")
     args = parser.parse_args()
     
-    save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
+    save_dir = "data"
     
     outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     from utils.pointclouds import read_calibration_file
-    # calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_realsense.json"
-    calib_file = "/home/memmelma/Projects/robotic/most_recent_calib_zed.json"
+    calib_file = "calibration/most_recent_calib_zed.json"
     calib_dict = read_calibration_file(calib_file)
     
     from threedda.text_embed import CLIPTextEmbedder
@@ -53,7 +52,7 @@ if __name__ == "__main__":
 
     env_config = {
         # CubeEnv
-        "xml_path": "/home/memmelma/Projects/robotic/franka_emika_panda/scene_new.xml",
+        "xml_path": "franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.0275,
         # # large randomization
