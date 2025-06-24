@@ -7,7 +7,7 @@ pip install -e .
 
 ## install modules (eval, logging, data gen)
 ```bash
-pip mujoco shapely wandb meshcat trimesh
+pip mujoco shapely wandb wandb[media] meshcat trimesh
 ```
 
 ## (optional) install curobo
