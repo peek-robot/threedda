@@ -510,10 +510,14 @@ if __name__ == "__main__":
         low_dim_keys.append("mask")
     
     if args.slurm:
-        print("copying dataset to /tmp/")
         import shutil
-        shutil.copy(args.dataset, "/tmp/")
-        args.dataset = "/tmp/" + os.path.basename(args.dataset)
+        tmp_dataset = "/tmp/" + os.path.basename(args.dataset)
+        if not os.path.exists(tmp_dataset):
+            print("copying dataset to /tmp/")
+            shutil.copy(args.dataset, tmp_dataset)
+        else:
+            print("dataset already exists in /tmp/")
+        args.dataset = tmp_dataset
 
     ext_cfg = {
         "algo_name": "bc",
