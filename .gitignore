@@ -16,3 +16,4 @@ __pycache__/
 tmp.xml
 launch.json
 MUJOCO.TXT
+.vscode/
