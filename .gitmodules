@@ -1,6 +1,6 @@
-[submodule "3d_diffuser_actor"]
-	path = 3d_diffuser_actor
+[submodule "third_party/3d_diffuser_actor"]
+	path = third_party/3d_diffuser_actor
 	url = https://github.com/memmelma/3d_diffuser_actor.git
-[submodule "robomimic_pcd"]
-	path = robomimic_pcd
+[submodule "third_party/robomimic_pcd"]
+	path = third_party/robomimic_pcd
 	url = git@github.com:memmelma/robomimic_pcd.git
