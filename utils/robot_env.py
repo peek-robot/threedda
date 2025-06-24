@@ -491,6 +491,16 @@ class CubeEnv(RobotEnv):
         self.obj_qpos_ids = [self.model.joint(name).id for name in self.obj_names]
         self.obj_geom_ids = [self.model.geom(name).id for name in self.obj_names]
 
+        self.main_colors = {
+            # "scotch_blue": [0.03921569, 0.43529412, 0.79607843],
+            "blue":    [0.0, 0.0, 1.0],
+            "red":     [1.0, 0.0, 0.0],
+            "green":   [0.0, 1.0, 0.0],
+            "yellow":  [1.0, 1.0, 0.0],
+            # "magenta": [1.0, 0.0, 1.0],
+            # "orange":  [1.0, 0.5, 0.0]
+        }
+
     def step(self, action):
         super().step(action)
         return self.get_obs(), 0, False, {}
@@ -557,27 +567,18 @@ class CubeEnv(RobotEnv):
         obj_poses = np.concatenate(obj_poses, axis=0)
         self.set_obj_poses(obj_poses)
 
-        main_colors = {
-            "scotch_blue": [0.03921569, 0.43529412, 0.79607843],
-            "blue":    [0.0, 0.0, 1.0],
-            "red":     [1.0, 0.0, 0.0],
-            "green":   [0.0, 1.0, 0.0],
-            "yellow":  [1.0, 1.0, 0.0],
-            # "magenta": [1.0, 0.0, 1.0],
-            # "orange":  [1.0, 0.5, 0.0]
-        }
-        colors = np.concatenate([main_colors[i] for i in np.random.choice(list(main_colors.keys()), size=self.num_objs, replace=False)], axis=0)
+        colors = np.concatenate([self.main_colors[i] for i in np.random.choice(list(self.main_colors.keys()), size=self.num_objs, replace=False)], axis=0)
         
         if self.num_objs == 1:
             self.color_names = ["blue"]
-            colors = main_colors[self.color_names[0]]
+            colors = self.main_colors[self.color_names[0]]
         if self.num_objs == 2:
             self.color_names = ["blue", "red"]
-            colors = np.concatenate([main_colors[self.color_names[0]], main_colors[self.color_names[1]]], axis=0)
+            colors = np.concatenate([self.main_colors[self.color_names[0]], self.main_colors[self.color_names[1]]], axis=0)
         if self.num_objs == 3:
             # draw 3 colors from main_colors
-            self.color_names = np.random.choice(list(main_colors.keys()), size=3, replace=False)
-            colors = np.concatenate([main_colors[i] for i in self.color_names], axis=0)
+            self.color_names = np.random.choice(list(self.main_colors.keys()), size=3, replace=False)
+            colors = np.concatenate([self.main_colors[i] for i in self.color_names], axis=0)
         self.set_obj_colors(colors)
 
     def get_lang_instr(self):
@@ -601,8 +602,16 @@ class CubeEnv(RobotEnv):
         mujoco.mj_forward(self.model, self.data)
 
     def set_obj_colors(self, obj_colors):
+        self.color_names = []
         for i, obj_geom_id in enumerate(self.obj_geom_ids):
             self.model.geom_rgba[obj_geom_id] = np.concatenate((obj_colors[i*3:(i+1)*3], [1.0]))
+            
+            rgb_value = obj_colors[i*3:(i+1)*3]
+            for color_name, color_rgb in self.main_colors.items():
+                if np.array_equal(rgb_value, color_rgb):
+                    self.color_names.append(color_name)
+                    break
+
         mujoco.mj_forward(self.model, self.data)
 
     def get_obj_poses(self):
@@ -641,8 +650,12 @@ class CubeEnv(RobotEnv):
 
     def is_success(self, task):
         if task == "pick":
-            return self.get_obj_poses()[2] > 0.1
+            # cube is above table
+            obj_poses = self.get_obj_poses()
+            return obj_poses[2] > 0.1
         elif task == "pick_and_place":
-            return np.sum(np.abs(self.get_obj_poses()[:2] - self.get_obj_poses()[7:9])) < self.obj_size
+            # cubes aligned & first (pick) one above second (place)one
+            obj_poses = self.get_obj_poses()
+            return np.sum(np.abs(obj_poses[:2] - obj_poses[7:9])) < self.obj_size and obj_poses[2] > obj_poses[9]
         else:
             raise ValueError(f"Invalid task: {task}")
