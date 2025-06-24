@@ -439,6 +439,12 @@ if __name__ == "__main__":
         action="store_true",
         help="slurm",
     )
+    parser.add_argument(
+        "--num_epochs",
+        type=int,
+        default=1000,
+        help="number of epochs",
+    )
     # parse arguments
     args = parser.parse_args()
 
@@ -470,7 +476,7 @@ if __name__ == "__main__":
     from argparse import Namespace
 
     model_config = {
-        "num_epochs": 1000,
+        "num_epochs": args.num_epochs,
         "epoch_every_n_steps": 100,
         "horizon": 16,
         "history": args.history,
@@ -513,7 +519,7 @@ if __name__ == "__main__":
         import shutil
         tmp_dataset = "/tmp/" + os.path.basename(args.dataset)
         if not os.path.exists(tmp_dataset):
-            print("copying dataset to /tmp/")
+            print("Copying dataset to /tmp/ ...")
             shutil.copy(args.dataset, tmp_dataset)
         else:
             print("dataset already exists in /tmp/")
