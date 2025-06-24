@@ -434,6 +434,11 @@ if __name__ == "__main__":
         action="store_true",
         help="normalize loss",
     )
+    parser.add_argument(
+        "--slurm",
+        action="store_true",
+        help="slurm",
+    )
     # parse arguments
     args = parser.parse_args()
 
@@ -504,6 +509,12 @@ if __name__ == "__main__":
     if model_config.obs_mask:
         low_dim_keys.append("mask")
     
+    if args.slurm:
+        print("copying dataset to /tmp/")
+        import shutil
+        shutil.copy(args.dataset, "/tmp/")
+        args.dataset = "/tmp/" + os.path.basename(args.dataset)
+
     ext_cfg = {
         "algo_name": "bc",
         "experiment": {
