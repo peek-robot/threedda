@@ -31,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, default="pick")
     parser.add_argument("--num_samples", type=int, default=10)
     parser.add_argument("--num_objs", type=int, default=1)
-    parser.add_argument("--save_dir", type=str, default="/home/memmelma/Projects/robotic/gifs_curobo")
+    parser.add_argument("--save_dir", type=str, default="data")
     parser.add_argument("--visual_augmentation", action="store_true")
     parser.add_argument("--drop_failures", action="store_true")
     parser.add_argument("--identifier", type=str, default=None)
@@ -41,6 +41,7 @@ if __name__ == "__main__":
     assert args.task == "pick_and_place" and args.num_objs > 1 or args.task == "pick"
 
     save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
+    # save_dir = "data"
     
     outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
@@ -56,7 +57,7 @@ if __name__ == "__main__":
 
     env_config = {
         # CubeEnv
-        "xml_path": "/home/memmelma/Projects/robotic/franka_emika_panda/scene_new.xml",
+        "xml_path": "franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.0275,
         # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
