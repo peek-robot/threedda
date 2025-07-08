@@ -1,0 +1,9 @@
+[submodule "curobo"]
+	path = curobo
+	url = https://github.com/NVlabs/curobo.git
+	branch = main
+
+[submodule "3d_diffuser_actor"]
+	path = 3d_diffuser_actor
+	url = https://github.com/your-org/3d_diffuser_actor.git
+	branch = main 
