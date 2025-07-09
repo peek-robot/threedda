@@ -36,7 +36,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_noise_std=0.0, obs_path=False, obs_mask=False, device=None):
+def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_path=False, obs_mask=False, obs_outlier=False, device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -93,20 +93,20 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
     points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
 
+    def zero_points(points, colors=None, crop_min=[-1.0, -1.0, -0.2], crop_max=[1.0, 1.0, 1.0]):
+        crop_min = torch.tensor(crop_min, device=points.device).view(1, 1, 3)
+        crop_max = torch.tensor(crop_max, device=points.device).view(1, 1, 3)
+
+        mask_min = (points > crop_min).all(dim=-1)
+        mask_max = (points < crop_max).all(dim=-1)
+        valid_mask = mask_min & mask_max
+
+        points[~valid_mask] = 0.
+        if colors is not None:
+            colors[~valid_mask] = 0.
+        return points, colors
+    
     if obs_crop:
-        
-        def zero_points(points, colors=None, crop_min=[-1.0, -1.0, -0.2], crop_max=[1.0, 1.0, 1.0]):
-            crop_min = torch.tensor(crop_min, device=points.device).view(1, 1, 3)
-            crop_max = torch.tensor(crop_max, device=points.device).view(1, 1, 3)
-
-            mask_min = (points > crop_min).all(dim=-1)
-            mask_max = (points < crop_max).all(dim=-1)
-            valid_mask = mask_min & mask_max
-
-            points[~valid_mask] = 0.
-            if colors is not None:
-                colors[~valid_mask] = 0.
-            return points, colors
 
         # # no table surface
         # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
@@ -115,8 +115,30 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_n
         # points, colors = zero_points(points, colors, crop_min=[0.3, -0.2, -0.1], crop_max=[0.7, 0.2, 0.3])
 
         # # full workspace + robot
-        points, colors = zero_points(points, colors, crop_min=[0., -0.25, -0.1], crop_max=[0.8, 0.25, 0.8])
+        points, colors = zero_points(points, colors, crop_min=[0., -0.3, -0.1], crop_max=[0.7, 0.3, 0.8])
     
+    if obs_crop_cube:
+        points, colors = zero_points(points, colors, crop_min=[0.2, -0.3, 0.02], crop_max=[0.7, 0.3, 0.3])
+    
+    if obs_outlier:
+        print("WARNING only use during inference - OOM otherwise")
+        def remove_outliers(points, colors, k=3, threshold=2e-2):
+            H, W, _ = points.shape
+            pts = points.reshape(-1, 3)
+            cols = colors.reshape(-1, 3)
+            diffs = pts.unsqueeze(1) - pts.unsqueeze(0)
+            dists = torch.norm(diffs, dim=2)
+            knn_dists, _ = torch.topk(dists, k+1, largest=False)
+            mean_knn_dist = knn_dists[:, 1:].mean(dim=1)
+            outliers = mean_knn_dist > threshold
+            cleaned_pts = pts.clone()
+            cleaned_cols = cols.clone()
+            cleaned_pts[outliers] = 0
+            cleaned_cols[outliers] = 0
+            return cleaned_pts.reshape(H, W, 3), cleaned_cols.reshape(H, W, 3)
+
+        points, colors = remove_outliers(points, colors,k=3, threshold=2e-2)
+
     points = points.reshape(B, H, W, 3)
     colors = colors.reshape(B, H, W, 3)
     pcd_obs = points.permute(0, 3, 1, 2).unsqueeze(1).float()
@@ -174,9 +196,9 @@ def get_model(da_config, device="cpu"):
             num_attn_heads=da_config.num_attn_heads,
             num_vis_ins_attn_layers=2,
             use_instruction=True,
-            fps_subsampling_factor=5,
-            # TODO: check those
-            gripper_loc_bounds=da_config.gripper_loc_bounds, # np.array([[-1.0, -1.0, 0], [1.0, 1.0, 1.0]]),
+            fps_subsampling_factor=da_config.fps_subsampling_factor,
+            high_res_features=da_config.high_res_features,
+            gripper_loc_bounds=da_config.gripper_loc_bounds,
             joint_loc_bounds=da_config.joint_loc_bounds,
             loss_weights=da_config.loss_weights,
             diffusion_timesteps=da_config.diffusion_timesteps,

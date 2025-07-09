@@ -38,12 +38,17 @@ if __name__ == "__main__":
     # parser.add_argument("--outfile", type=str, default="blue_cube_10_fast_path_mask.hdf5")
     args = parser.parse_args()
     
-    save_dir = "data"
+    assert args.task == "pick_and_place" and args.num_objs > 1 or args.task == "pick"
+
+    save_dir = "/home/memmelma/Projects/robotic/gifs_curobo"
+    # save_dir = "data"
     
     outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     from utils.pointclouds import read_calibration_file
-    calib_file = "calibration/most_recent_calib_zed.json"
+    # calib_file = "/home/memmelma/Projects/robotic/calibrations/most_recent_calib_realsense.json"
+    calib_file = "/home/memmelma/Projects/robotic/calibrations/most_recent_calib_zed_middle.json"
+    # calib_file = "/home/memmelma/Projects/robotic/calibrations/most_recent_calib_zed_left.json"
     calib_dict = read_calibration_file(calib_file)
     
     from threedda.text_embed import CLIPTextEmbedder
@@ -55,20 +60,9 @@ if __name__ == "__main__":
         "xml_path": "franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.0275,
-        # # large randomization
-        # "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
-        # "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 4, np.pi / 4]],
-        # # medium randomization
-        # "obj_pos_dist": [[0.4, -0.1, 0.03], [0.6, 0.1, 0.03]],
-        "obj_pos_dist": [[0.3, -0.2, 0.03], [0.7, 0.2, 0.03]],
-        "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
-        # # small randomization
-        # "obj_pos_dist": [[0.5, -0.1, 0.03], [0.6, 0.1, 0.03]],
-        # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
-        # # no randomization
-        # "obj_pos_dist": [[0.5, 0.0, 0.03], [0.5, 0.0, 0.03]],
-        # "obj_ori_dist": [[0, 0], [0, 0], [0, 0]],
-        # "obj_color_dist": [[0, 0, 1], [0, 0, 1]],
+        # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
+        "obj_pos_dist": [[0.3, -0.25, 0.03], [0.6, 0.25, 0.03]],
+        "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 16, np.pi / 16]],
         "seed": 0,
         "obs_keys": ["lang_instr", "ee_pos", "ee_pose", "qpos", "qpos_normalized", "gripper_state_discrete", "gripper_state_continuous", "gripper_state_normalized", "obj_poses", "obj_colors", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
         
@@ -81,7 +75,7 @@ if __name__ == "__main__":
         "calib_dict": calib_dict,
         "n_steps": 50,
         "time_steps": 0.002,
-        "reset_qpos_noise_std": 1e-2,
+        "reset_qpos_noise_std": 5e-3,
         "controller": "abs_joint"
     }
     env = CubeEnv(**env_config)
@@ -114,9 +108,9 @@ if __name__ == "__main__":
         if args.visual_augmentation:
             env.randomize()
     
-        env.reset_objs()
-        if args.visual_augmentation and env.num_objs == 1:
-            env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
+        # env.reset_objs()
+        # if args.visual_augmentation and env.num_objs == 1:
+        #     env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
         data_collector.reset()
 
         # get initial state

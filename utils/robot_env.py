@@ -59,8 +59,8 @@ class RobotEnv:
         
         # much closer
         self.reset_qpos = np.array([
-            0.02299943, -0.07843312, -0.03196311, -2.21364984, -0.01667695,
-        2.14565732,  0.75160931
+            0.08535511, -0.8716217 , -0.11309249, -2.92283648, -0.13878459,
+        2.05753043,  0.88281583
         ])
 
         self.gripper_state = 1.0
@@ -377,9 +377,9 @@ class RobotEnv:
         # self.set_camera_intrinsic(self.camera_name, intrinsic[0, 0], intrinsic[1, 1], intrinsic[0, 2], intrinsic[1, 2], intrinsic[2, 2])
         # noise camera pose
         camera_extrinsic = self.get_camera_extrinsic(mujoco_format=True)
-        scale = 2e-2
+        scale = 1e-2
         pos_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
-        scale = 2e-2
+        scale = 1e-2
         ori_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
         camera_extrinsic[:3, 3] += pos_noise
         camera_extrinsic[:3, :3] = R.from_euler("xyz", ori_noise, degrees=False).as_matrix() @ camera_extrinsic[:3, :3]
@@ -448,9 +448,9 @@ class RobotEnv:
 
         # randomize camera, background color, light
         self.randomize_camera_pose()
-        self.randomize_background_color()
+        # self.randomize_background_color()
         # self.randomize_all_color()
-        self.randomize_light()
+        # self.randomize_light()
 
         # push changes from model to data | reset mujoco data
         mujoco.mj_resetData(self.model, self.data)
@@ -492,7 +492,6 @@ class CubeEnv(RobotEnv):
         self.obj_geom_ids = [self.model.geom(name).id for name in self.obj_names]
 
         self.main_colors = {
-            # "scotch_blue": [0.03921569, 0.43529412, 0.79607843],
             "blue":    [0.0, 0.0, 1.0],
             "red":     [1.0, 0.0, 0.0],
             "green":   [0.0, 1.0, 0.0],
@@ -500,12 +499,21 @@ class CubeEnv(RobotEnv):
             # "magenta": [1.0, 0.0, 1.0],
             # "orange":  [1.0, 0.5, 0.0]
         }
+        
+        if self.num_objs == 1:
+            self.main_colors["scotch_blue"] = [0.03921569, 0.43529412, 0.79607843]
+            self.color_names = ["scotch_blue"]
+            self.colors = self.main_colors[self.color_names[0]]
+        elif self.num_objs == 2:
+            self.color_names = ["blue", "red"]
+            self.colors = np.concatenate([self.main_colors[self.color_names[0]], self.main_colors[self.color_names[1]]], axis=0)
 
     def step(self, action):
         super().step(action)
         return self.get_obs(), 0, False, {}
     
     def reset(self):
+        self.reset_objs()
         super().reset()
         return self.get_obs()
 
@@ -566,20 +574,13 @@ class CubeEnv(RobotEnv):
             obj_poses.append(np.concatenate((box_pos, box_quat)))
         obj_poses = np.concatenate(obj_poses, axis=0)
         self.set_obj_poses(obj_poses)
-
-        colors = np.concatenate([self.main_colors[i] for i in np.random.choice(list(self.main_colors.keys()), size=self.num_objs, replace=False)], axis=0)
         
-        if self.num_objs == 1:
-            self.color_names = ["blue"]
-            colors = self.main_colors[self.color_names[0]]
-        if self.num_objs == 2:
-            self.color_names = ["blue", "red"]
-            colors = np.concatenate([self.main_colors[self.color_names[0]], self.main_colors[self.color_names[1]]], axis=0)
         if self.num_objs == 3:
             # draw 3 colors from main_colors
             self.color_names = np.random.choice(list(self.main_colors.keys()), size=3, replace=False)
-            colors = np.concatenate([self.main_colors[i] for i in self.color_names], axis=0)
-        self.set_obj_colors(colors)
+            self.colors = np.concatenate([self.main_colors[i] for i in self.color_names], axis=0)
+
+        self.set_obj_colors(self.colors)
 
     def get_lang_instr(self):
         if self.num_objs == 1:

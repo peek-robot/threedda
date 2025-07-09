@@ -136,6 +136,8 @@ def train(
                 horizon=model_config.horizon,
                 obs_noise_std=model_config.obs_noise_std,
                 obs_crop=model_config.obs_crop,
+                obs_crop_cube=model_config.obs_crop_cube,
+                obs_outlier=model_config.obs_outlier,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 device=device,
@@ -264,6 +266,8 @@ def train(
                     horizon=model_config.horizon,
                     obs_noise_std=model_config.obs_noise_std,
                     obs_crop=model_config.obs_crop,
+                    obs_crop_cube=model_config.obs_crop_cube,
+                    obs_outlier=model_config.obs_outlier,
                     obs_path=model_config.obs_path,
                     obs_mask=model_config.obs_mask,
                     device=device,
@@ -320,7 +324,7 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        if (epoch % 100 == 0 and epoch > 300):
+        if (epoch % model_config.eval_every_n_epochs == 0 and epoch != 0):
             eval_mode = "closed_loop"
             successes, videos, instructions = eval_3dda(
                 policy=model,
@@ -344,6 +348,37 @@ def train(
                     }
                 )
 
+        ### HACK: real data eval ###
+        if (epoch % model_config.eval_every_n_epochs == 0 and epoch != 0):
+            eval_mode = "open_loop"
+            successes, videos, instructions = eval_3dda(
+                policy=model,
+                model_config=model_config,
+                data_path="gifs_curobo/pick_10_1_objs_va_high_cam.hdf5",
+
+                real_data_path="pick_10_1_objs_va_high_cam_real.hdf5",
+                open_loop_obs_key="obs_real",
+                n_rollouts=1,
+                n_steps=1,
+                
+                mode=eval_mode,
+                action_chunking=True,
+                action_chunk_size=8,
+                clip_embedder=clip_embedder,
+                path_mode="open_loop" if model_config.obs_path else None,
+                mask_mode="open_loop" if model_config.obs_mask else None,
+            )
+            wandb.log({"epoch": epoch, f"eval_real/{eval_mode}/success_rate": np.mean(successes)})
+            for i, (video, instruction) in enumerate(zip(videos, instructions)):
+                wandb.log(
+                    {
+                        "epoch": epoch,
+                        f"eval_real/{eval_mode}/{instruction}_{i}": wandb.Video(
+                            video.transpose(0, 3, 1, 2), fps=10, format="gif"
+                        )
+                    }
+                )
+        ### HACK: real data eval ###
 
 if __name__ == "__main__":
     # define arguments
@@ -354,7 +389,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--action_space", type=str, default="joint", help="action space"
     )
-
+    parser.add_argument(
+        "--n_epochs",
+        type=int,
+        default=500,
+        help="number of epochs",
+    )
+    parser.add_argument(
+        "--eval_every_n_epochs",
+        type=int,
+        default=100,
+        help="evaluate every n epochs",
+    )
+    parser.add_argument(
+        "--epoch_every_n_steps",
+        type=int,
+        default=100,
+        help="train every n steps",
+    )
     parser.add_argument(
         "--dataset",
         type=str,
@@ -387,9 +439,25 @@ if __name__ == "__main__":
     # EXPERIMENTS
 
     parser.add_argument(
+        "--image_size",
+        type=int,
+        default=128,
+        help="image size",
+    )
+    parser.add_argument(
         "--obs_crop",
         action="store_true",
         help="crop points",
+    )
+    parser.add_argument(
+        "--obs_crop_cube",
+        action="store_true",
+        help="crop cube points",
+    )
+    parser.add_argument(
+        "--obs_outlier",
+        action="store_true",
+        help="remove outliers",
     )
     parser.add_argument(
         "--obs_path",
@@ -414,6 +482,11 @@ if __name__ == "__main__":
         help="fps subsampling factor",
     )
     parser.add_argument(
+        "--high_res_features",
+        action="store_true",
+        help="use high res features",
+    )
+    parser.add_argument(
         "--history",
         type=int,
         default=2,
@@ -433,6 +506,11 @@ if __name__ == "__main__":
         "--normalize_loss",
         action="store_true",
         help="normalize loss",
+    )
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=16,
     )
     parser.add_argument(
         "--slurm",
@@ -476,9 +554,10 @@ if __name__ == "__main__":
     from argparse import Namespace
 
     model_config = {
-        "num_epochs": args.num_epochs,
-        "epoch_every_n_steps": 100,
-        "horizon": 16,
+        "num_epochs": args.n_epochs,
+        "eval_every_n_epochs": args.eval_every_n_epochs,
+        "epoch_every_n_steps": args.epoch_every_n_steps,
+        "horizon": args.horizon,
         "history": args.history,
         "batch_size": 64,
         "lr": 3e-4,
@@ -491,15 +570,18 @@ if __name__ == "__main__":
         "gripper_loc_bounds": None,
         "loss_weights": [30, 1],
         "normalize_loss": not args.normalize_loss,
-        "image_size": (128, 128),  # (256, 256),
+        "image_size": (args.image_size, args.image_size),
         # ablations
         "fps_subsampling_factor": args.fps_subsampling_factor,
         "obs_noise_std": args.obs_noise_std,
         "obs_crop": args.obs_crop,
+        "obs_crop_cube": args.obs_crop_cube,
+        "obs_outlier": args.obs_outlier,
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
+        "high_res_features": args.high_res_features,
     }
     model_config = Namespace(**model_config)
 
@@ -548,7 +630,7 @@ if __name__ == "__main__":
             "data": args.dataset,
             "output_dir": "../bc_transformer_trained_models",
             "num_data_workers": 0,
-            "hdf5_cache_mode": "low_dim",
+            "hdf5_cache_mode": None,
             "hdf5_use_swmr": True,
             "hdf5_load_next_obs": False,
             "hdf5_normalize_obs": False,

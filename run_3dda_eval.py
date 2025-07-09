@@ -50,6 +50,7 @@ def plot_actions(
 
 def eval_3dda(
     data_path,
+    real_data_path=None,
     policy=None,
     model_config=None,
     clip_embedder=None,
@@ -61,6 +62,7 @@ def eval_3dda(
     n_steps=None,
     path_mode=None, # "open_loop",
     mask_mode=None, # "open_loop",
+    open_loop_obs_key="obs",
 ):
 
     if "pick_and_place" in data_path:
@@ -104,9 +106,6 @@ def eval_3dda(
     num_frames = model_config.history
     framestack = FrameStackWrapper(num_frames=num_frames)
 
-    # HACK
-    # data_path = "/home/memmelma/Projects/robotic/blue_cube_black_curtain.hdf5"
-
     if (n_rollouts is None or n_steps is None) and task == "pick_and_place":
         n_steps = 90
         n_rollouts = 10
@@ -122,12 +121,13 @@ def eval_3dda(
         # load open_loop and replay data
         if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
             demo_idx = i
-            with h5py.File(data_path, "r", swmr=True) as f:
+            with h5py.File(real_data_path if real_data_path is not None else data_path, "r", swmr=True) as f:
                 open_loop_obs = {
-                    k: v[:] for k, v in f["data"][f"demo_{demo_idx}"]["obs"].items()
+                    k: v[:] for k, v in f["data"][f"demo_{demo_idx}"][open_loop_obs_key].items()
                 }
                 open_loop_actions = f["data"][f"demo_{demo_idx}"]["actions"][:]
 
+            with h5py.File(data_path, "r", swmr=True) as f:
                 # set obj poses and colors
                 obj_poses = f["data"][f"demo_{demo_idx}"]["obs"]["obj_poses"][:]
                 obj_pose = obj_poses[0]
@@ -137,17 +137,34 @@ def eval_3dda(
                 n_steps = open_loop_actions.shape[0] - 1
 
         # reset everything
-        env.reset_objs()
+        # env.reset_objs()
+
+
+        obs = env.reset()
         if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
             env.set_obj_poses(obj_pose)
             env.set_obj_colors(obj_color)
-
-        obs = env.reset()
+        
         obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
 
         instructions.append(env.get_lang_instr())
 
-        imgs = [obs["rgb"]]
+
+        # # HACK swap in real observations
+        # data_path = "fullrollout.hdf5"
+        # demo_idx = 0
+        # with h5py.File(data_path, "r", swmr=True) as f:
+        #     open_loop_obs = {
+        #         k: v[:] for k, v in f["data"][f"demo_{demo_idx}"]["obs_real"].items()
+        #     }
+        #     n_steps = open_loop_obs["rgb"].shape[0] - 1
+        # # HACK swap in real observations
+        # Example:
+        # python run_3dda_eval.py --name 3dda_low_res_fast_fps_2_h_2 --mode open_loop --n_steps 2 --ckpt best --dataset gifs_curobo/pick_1000_1_objs_128_s2r.hdf5 --n_rollouts 1
+
+
+        # imgs = [obs["rgb"]]
+        imgs = [np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1)]
         if mode == "open_loop":
             obs = {
                 k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
@@ -181,6 +198,7 @@ def eval_3dda(
                     history=model_config.history,
                     horizon=model_config.horizon,
                     obs_crop=model_config.obs_crop,
+                    obs_crop_cube=model_config.obs_crop_cube,
                     obs_noise_std=0.0,
                     obs_path=path_mode is not None and path_mode == "open_loop",
                     obs_mask=mask_mode is not None and mask_mode == "open_loop",
@@ -234,7 +252,9 @@ def eval_3dda(
                 # if t < num_frames:
                 #     env.obs_keys = obs_keys_copy
                 framestack.add_obs(obs)
-                imgs.append(obs["rgb"])
+                
+                # imgs.append(obs["rgb"])
+                imgs.append(np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1))
 
                 # check for success
                 success = env.is_success(task=task)
@@ -246,8 +266,9 @@ def eval_3dda(
         successes.append(success)
         videos.append(np.array(imgs))
 
-        if mode == "open_loop" or mode == "replay":
-            # TODO fix save_dir when running from train script
+        if ckpt_path is not None and (mode == "open_loop" or mode == "replay"):
+            save_dir = os.path.join(os.path.dirname(ckpt_path), mode)
+            os.makedirs(save_dir, exist_ok=True)
             plot_actions(
                 np.stack(pred_actions),
                 denormalize(open_loop_actions, min=action_min, max=action_max),
@@ -289,11 +310,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_action_chunking", action="store_true", help="Enable action chunking"
     )
-    parser.add_argument("--n_rollouts", type=int, default=10)
+    parser.add_argument("--action_chunk_size", type=int, default=8)
+    parser.add_argument("--n_rollouts", type=int, default=1)
     parser.add_argument("--n_steps", type=int, default=70)
     parser.add_argument("--path_mode", type=str, default=None)
     parser.add_argument("--mask_mode", type=str, default=None)
-
+    
     args = parser.parse_args()
 
     if args.ckpt_dir is None:
@@ -306,6 +328,7 @@ if __name__ == "__main__":
         ckpt_path=ckpt_path,
         mode=args.mode,
         action_chunking=not args.no_action_chunking,
+        action_chunk_size=args.action_chunk_size,
         n_rollouts=args.n_rollouts,
         n_steps=args.n_steps,
         path_mode=args.path_mode,

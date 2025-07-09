@@ -44,7 +44,9 @@ class DataCollector:
         obs_grp = demo_grp.create_group("obs")
         for key in self.obs.keys():
             if key == self.lang_key:
-                self.obs[key] = np.repeat(self.clip_embedder.embed_instruction(self.obs[key][0]).numpy()[None], len(self.obs[key]), axis=0)
+                lang_str = self.obs[key][0]
+                obs_grp.attrs.create(self.lang_key, lang_str)
+                self.obs[key] = np.repeat(self.clip_embedder.embed_instruction(lang_str).numpy()[None], len(self.obs[key]), axis=0)
             obs_grp.create_dataset(key, data=self.obs[key][:-1])
         demo_grp.attrs.create("num_samples", len(self.obs[key][:-1]))
 
