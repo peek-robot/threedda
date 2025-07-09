@@ -511,9 +511,9 @@ if __name__ == "__main__":
         "lang_instr",
     ]
     if model_config.obs_path:
-        low_dim_keys.append("path")
+        low_dim_keys.append("path_vlm")
     if model_config.obs_mask:
-        low_dim_keys.append("mask")
+        low_dim_keys.append("mask_vlm")
     
     if args.slurm:
         import shutil

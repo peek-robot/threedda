@@ -93,7 +93,11 @@ def eval_3dda(
     # set to ood seed if not using path or mask
     if path_mode is None and mask_mode is None:
         env_config["seed"] += 1
+
     # env_config["obs_keys"] = ["qpos", "gripper_state_continuous", "gripper_state_discrete", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"]
+    to_be_replaced = "/home/memmelma/Projects/robotic/franka_emika_panda"
+    if to_be_replaced in env_config["xml_path"]:
+        env_config["xml_path"] = env_config["xml_path"].replace(to_be_replaced, "/gscratch/weirdlab/memmelma/simvla/pick_data_gen/franka_emika_panda")
     env = CubeEnv(**env_config)
 
     # init framestack
@@ -149,9 +153,9 @@ def eval_3dda(
                 k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
             }
         if path_mode is not None:
-            obs["path"] = open_loop_obs["path"][0]
+            obs["path_vlm"] = open_loop_obs["path_vlm"][0]
         if mask_mode is not None:
-            obs["mask"] = open_loop_obs["mask"][0]
+            obs["mask_vlm"] = open_loop_obs["mask_vlm"][0]
         framestack.add_obs(obs)
 
         pred_actions = []
@@ -178,8 +182,8 @@ def eval_3dda(
                     horizon=model_config.horizon,
                     obs_crop=model_config.obs_crop,
                     obs_noise_std=0.0,
-                    obs_path=path_mode is not None,
-                    obs_mask=mask_mode is not None,
+                    obs_path=path_mode is not None and path_mode == "open_loop",
+                    obs_mask=mask_mode is not None and mask_mode == "open_loop",
                     device=device,
                 )
 
@@ -274,6 +278,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="3dda_closeup")
     parser.add_argument("--ckpt", type=str, default="best")
+    parser.add_argument("--ckpt_dir", type=str, default=None)
+
     parser.add_argument(
         "--dataset",
         type=str,
@@ -290,7 +296,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ckpt_path = f"/home/memmelma/Projects/robotic/results/{args.name}/{args.ckpt}.pth"
+    if args.ckpt_dir is None:
+        ckpt_path = f"/home/memmelma/Projects/robotic/results/{args.name}/{args.ckpt}.pth"
+    else:
+        ckpt_path = os.path.join(args.ckpt_dir, args.ckpt + ".pth")
 
     successes, videos, instructions = eval_3dda(
         data_path=args.dataset,
@@ -303,7 +312,8 @@ if __name__ == "__main__":
         mask_mode=args.mask_mode,
     )
 
-    save_dir = os.path.join(os.path.dirname(ckpt_path), args.mode)
+    save_dir = os.path.join(os.path.dirname(ckpt_path), args.mode, args.ckpt)
+    print("RESULT", "ckpt", ckpt_path, "success rate", np.mean(successes), "saved to", save_dir)
     os.makedirs(save_dir, exist_ok=True)
     for i, (video, instruction) in enumerate(zip(videos, instructions)):
         imageio.mimsave(os.path.join(save_dir, f"img_{instruction}_{i}.gif"), video)
