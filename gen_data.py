@@ -108,9 +108,9 @@ if __name__ == "__main__":
         if args.visual_augmentation:
             env.randomize()
     
-        env.reset_objs()
-        if args.visual_augmentation and env.num_objs == 1:
-            env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
+        # env.reset_objs()
+        # if args.visual_augmentation and env.num_objs == 1:
+        #     env.set_obj_colors(np.clip(np.array([0.,0.,0.7]) + np.random.uniform(0.0, 0.3, size=3), 0.0, 1.0))
         data_collector.reset()
 
         # get initial state

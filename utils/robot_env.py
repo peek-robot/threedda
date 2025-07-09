@@ -492,7 +492,6 @@ class CubeEnv(RobotEnv):
         self.obj_geom_ids = [self.model.geom(name).id for name in self.obj_names]
 
         self.main_colors = {
-            "scotch_blue": [0.03921569, 0.43529412, 0.79607843],
             "blue":    [0.0, 0.0, 1.0],
             "red":     [1.0, 0.0, 0.0],
             "green":   [0.0, 1.0, 0.0],
@@ -502,6 +501,7 @@ class CubeEnv(RobotEnv):
         }
         
         if self.num_objs == 1:
+            self.main_colors["scotch_blue"] = [0.03921569, 0.43529412, 0.79607843]
             self.color_names = ["scotch_blue"]
             self.colors = self.main_colors[self.color_names[0]]
         elif self.num_objs == 2:
@@ -513,6 +513,7 @@ class CubeEnv(RobotEnv):
         return self.get_obs(), 0, False, {}
     
     def reset(self):
+        self.reset_objs()
         super().reset()
         return self.get_obs()
 

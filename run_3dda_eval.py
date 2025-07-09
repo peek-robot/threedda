@@ -108,11 +108,6 @@ def eval_3dda(
     num_frames = model_config.history
     framestack = FrameStackWrapper(num_frames=num_frames)
 
-    # HACK
-    # real_data_path = "/home/memmelma/Projects/robotic/blue_cube_black_curtain.hdf5"
-    if real_data_path is not None:
-        data_path = real_data_path
-
     if (n_rollouts is None or n_steps is None) and task == "pick_and_place":
         n_steps = 90
         n_rollouts = 10
@@ -128,29 +123,30 @@ def eval_3dda(
         # load open_loop and replay data
         if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
             demo_idx = i
-            with h5py.File(data_path, "r", swmr=True) as f:
+            with h5py.File(real_data_path if real_data_path is not None else data_path, "r", swmr=True) as f:
                 open_loop_obs = {
                     k: v[:] for k, v in f["data"][f"demo_{demo_idx}"][open_loop_obs_key].items()
                 }
                 open_loop_actions = f["data"][f"demo_{demo_idx}"]["actions"][:]
 
-                if real_data_path is None:
-                    # set obj poses and colors
-                    obj_poses = f["data"][f"demo_{demo_idx}"]["obs"]["obj_poses"][:]
-                    obj_pose = obj_poses[0]
-                    obj_colors = f["data"][f"demo_{demo_idx}"]["obs"]["obj_colors"][:]
-                    obj_color = obj_colors[0]
+            with h5py.File(data_path, "r", swmr=True) as f:
+                # set obj poses and colors
+                obj_poses = f["data"][f"demo_{demo_idx}"]["obs"]["obj_poses"][:]
+                obj_pose = obj_poses[0]
+                obj_colors = f["data"][f"demo_{demo_idx}"]["obs"]["obj_colors"][:]
+                obj_color = obj_colors[0]
 
                 n_steps = open_loop_actions.shape[0] - 1
 
         # reset everything
-        env.reset_objs()
-        if real_data_path is None:
-            if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
-                env.set_obj_poses(obj_pose)
-                env.set_obj_colors(obj_color)
+        # env.reset_objs()
+
 
         obs = env.reset()
+        if mode == "open_loop" or mode == "replay" or path_mode is not None or mask_mode is not None:
+            env.set_obj_poses(obj_pose)
+            env.set_obj_colors(obj_color)
+        
         obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
 
         instructions.append(env.get_lang_instr())

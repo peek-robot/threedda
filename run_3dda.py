@@ -354,7 +354,7 @@ def train(
             successes, videos, instructions = eval_3dda(
                 policy=model,
                 model_config=model_config,
-                data_path=dataset,
+                data_path="gifs_curobo/pick_10_1_objs_va_high_cam.hdf5",
 
                 real_data_path="pick_10_1_objs_va_high_cam_real.hdf5",
                 open_loop_obs_key="obs_real",
