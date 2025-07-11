@@ -1,0 +1,7 @@
+runint
+
+tmux new -s server
+conda activate vila && python scripts/vila/inference/server_vlm.py --model_path memmelma/vila_13b_path_mask_new
+
+tmux new -s ngrok
+conda activate vila && ngrok http 8000

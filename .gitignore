@@ -1,13 +1,15 @@
 .vscode/
 __pycache__/
-wandb/
 
-gifs_curobo/
+wandb/
+data/
 results/
+tmp/
 
 *.gifs
 *.zip
 *.hdf5
 *.npz
+*.npy
 *.png
 *.gif

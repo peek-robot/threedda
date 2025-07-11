@@ -1,9 +1,19 @@
-[submodule "curobo"]
-	path = curobo
+[submodule "robomimic_pcd"]
+	path = third_party/robomimic_pcd
+	url = https://github.com/memmelma/robomimic_pcd
+	branch = master
+
+[submodule "third_party3d_diffuser_actor"]
+	path = third_party/3d_diffuser_actor
+	url = https://github.com/memmelma/3d_diffuser_actor.git
+	branch = master 
+
+[submodule "third_party/VILA"]
+	path = third_party/VILA
+	url = https://github.com/NVlabs/VILA.git
+	branch = vila1.5
+	
+[submodule "third_party/curobo"]
+	path = third_party/curobo
 	url = https://github.com/NVlabs/curobo.git
 	branch = main
-
-[submodule "3d_diffuser_actor"]
-	path = 3d_diffuser_actor
-	url = https://github.com/your-org/3d_diffuser_actor.git
-	branch = main 
