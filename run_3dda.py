@@ -674,7 +674,7 @@ if __name__ == "__main__":
         model, optimizer, start_epoch, best_loss, wandb_config, model_config = (
             load_checkpoint(resume_path, device=device)
         )
-        model_config.num_epochs = 2500
+        # model_config.num_epochs = 2500
 
         wandb.init(
             entity=wandb_config["entity"],
