@@ -70,7 +70,7 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_c
     if obs_path:
         from utils.paths import add_path_2d_to_img
         path_rgbs = []
-        for path, rgb in zip(sample["obs"]["path"], sample["obs"]["rgb"]):
+        for path, rgb in zip(sample["obs"]["path_vlm"], sample["obs"]["rgb"]):
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
@@ -83,7 +83,7 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_c
     if obs_mask:
         from utils.paths import add_mask_2d_to_img
         mask_depths = []
-        for mask, depth in zip(sample["obs"]["mask"], sample["obs"]["depth"]):
+        for mask, depth in zip(sample["obs"]["mask_vlm"], sample["obs"]["depth"]):
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]

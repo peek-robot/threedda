@@ -603,8 +603,16 @@ class CubeEnv(RobotEnv):
         mujoco.mj_forward(self.model, self.data)
 
     def set_obj_colors(self, obj_colors):
+        self.color_names = []
         for i, obj_geom_id in enumerate(self.obj_geom_ids):
             self.model.geom_rgba[obj_geom_id] = np.concatenate((obj_colors[i*3:(i+1)*3], [1.0]))
+            
+            rgb_value = obj_colors[i*3:(i+1)*3]
+            for color_name, color_rgb in self.main_colors.items():
+                if np.array_equal(rgb_value, color_rgb):
+                    self.color_names.append(color_name)
+                    break
+
         mujoco.mj_forward(self.model, self.data)
 
     def get_obj_poses(self):
@@ -643,8 +651,12 @@ class CubeEnv(RobotEnv):
 
     def is_success(self, task):
         if task == "pick":
-            return self.get_obj_poses()[2] > 0.1
+            # cube is above table
+            obj_poses = self.get_obj_poses()
+            return obj_poses[2] > 0.1
         elif task == "pick_and_place":
-            return np.sum(np.abs(self.get_obj_poses()[:2] - self.get_obj_poses()[7:9])) < self.obj_size
+            # cubes aligned & first (pick) one above second (place)one
+            obj_poses = self.get_obj_poses()
+            return np.sum(np.abs(obj_poses[:2] - obj_poses[7:9])) < self.obj_size and obj_poses[2] > obj_poses[9]
         else:
             raise ValueError(f"Invalid task: {task}")
