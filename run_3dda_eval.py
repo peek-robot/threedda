@@ -244,9 +244,9 @@ def eval_3dda(
                         if k in env_config["obs_keys"]
                     }
                 if path_mode is not None:
-                    obs["path"] = open_loop_obs["path"][0]
+                    obs["path_vlm"] = open_loop_obs["path_vlm"][0]
                 if mask_mode is not None:
-                    obs["mask"] = open_loop_obs["mask"][0]
+                    obs["mask_vlm"] = open_loop_obs["mask_vlm"][0]
                 
                 # # HACK: only render when required
                 # if t < num_frames:
@@ -264,7 +264,11 @@ def eval_3dda(
                 break
             
         successes.append(success)
-        videos.append(np.array(imgs))
+        try:
+            videos.append(np.array(imgs))
+        except:
+            videos.append(np.array([im[:128, :128, :3] for im in imgs]))
+            
 
         if ckpt_path is not None and (mode == "open_loop" or mode == "replay"):
             save_dir = os.path.join(os.path.dirname(ckpt_path), mode)

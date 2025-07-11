@@ -80,12 +80,6 @@ class DataCollector:
             path_raw = generate_path_2d_from_obs(self.data_grp[dk]["obs"]["ee_pos"], self.data_grp[dk]["obs"]["camera_intrinsic"], self.data_grp[dk]["obs"]["camera_extrinsic"])
             path = scale_path(path_raw, min_in=0., max_in=H, min_out=0., max_out=1.)
             path = smooth_path_rdp(path, tolerance=0.05)
-            path = scale_path(path, min_in=0., max_in=1., min_out=0., max_out=H).astype(np.int32)
-
-            # store path as 2d image
-            path_imgs = np.stack([add_path_2d_to_img(im, path) for im in self.data_grp[dk]["obs"]["rgb"]], axis=0)
-            self.data_grp[dk]["obs"].create_dataset("path_rgb", data=path_imgs, dtype=np.uint8)
-            self.obs["path_rgb"] = path_imgs
 
             # path shape (N, 2) pad N with zeros until N=P
             max_path_length = 255
@@ -94,6 +88,15 @@ class DataCollector:
             path_pad = np.repeat(path_pad[None], path_imgs.shape[0], axis=0)
             # store raw path
             self.data_grp[dk]["obs"].create_dataset("path", data=path_pad, dtype=np.float32)
+
+
+            # store path as 2d image
+            path = scale_path(path, min_in=0., max_in=1., min_out=0., max_out=H).astype(np.int32)
+            path_imgs = np.stack([add_path_2d_to_img(im, path) for im in self.data_grp[dk]["obs"]["rgb"]], axis=0)
+            self.data_grp[dk]["obs"].create_dataset("path_rgb", data=path_imgs, dtype=np.uint8)
+            self.obs["path_rgb"] = path_imgs
+
+
             
             # compute MASK in image space
             # obj 0 (& 1)
@@ -109,11 +112,7 @@ class DataCollector:
             cam_ext = self.data_grp[dk]["obs"]["camera_extrinsic"]
             mask_raw = generate_path_2d_from_obs(obj_poses, np.concatenate((cam_int, cam_int)), np.concatenate((cam_ext, cam_ext)))
             mask = np.concatenate([path_raw, mask_raw], axis=0)
-
-            # store mask as 2d depth
-            mask_depths = np.stack([add_mask_2d_to_img(im, mask, mask_pixels=int(H * 0.15)) for im in self.data_grp[dk]["obs"]["depth"]], axis=0)
-            self.data_grp[dk]["obs"].create_dataset("mask_depth", data=mask_depths, dtype=np.int16)
-            self.obs["mask_depth"] = mask_depths
+            mask = scale_path(mask, min_in=0., max_in=H, min_out=0., max_out=1.)
 
             # mask shape (N, 2) pad N with zeros until N=P
             max_mask_length = 255
@@ -122,6 +121,14 @@ class DataCollector:
             mask_pad = np.repeat(mask_pad[None], mask_depths.shape[0], axis=0)
             # store raw mask
             self.data_grp[dk]["obs"].create_dataset("mask", data=mask_pad, dtype=np.float32)
+
+            # store mask as 2d depth
+            mask = scale_path(mask, min_in=0., max_in=1., min_out=0., max_out=H).astype(np.int32)
+            mask_depths = np.stack([add_mask_2d_to_img(im, mask, mask_pixels=int(H * 0.15)) for im in self.data_grp[dk]["obs"]["depth"]], axis=0)
+            self.data_grp[dk]["obs"].create_dataset("mask_depth", data=mask_depths, dtype=np.int16)
+            self.obs["mask_depth"] = mask_depths
+
+
 
 
     def close(self):

@@ -11,6 +11,8 @@ from torch import optim
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation as R
+from utils.paths import scale_path
+
 
 def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.0):
     B, H, W = depth.shape
@@ -72,6 +74,7 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_c
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
+            path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # add path to rgb
             path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
             path_rgbs.append(torch.from_numpy(path_rgb))
@@ -85,6 +88,7 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_c
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
+            mask_unpad = scale_path(mask_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # add mask to depth
             mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=int(H * 0.15))
             mask_depths.append(torch.from_numpy(mask_depth))

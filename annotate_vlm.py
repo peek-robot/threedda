@@ -72,11 +72,12 @@ if __name__ == "__main__":
 
         rgbs = file[dk]["obs"]["rgb"]
         lang_instr = file[dk]["obs"].attrs["lang_instr"]
-        split_size = 15
 
         paths_pad, masks_pad, images = [], [], []
         # HACK: single sub-task for now
+        split_size = -1
         for split_idx in range(1):
+        # split_size = 15
         # for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
         
 
