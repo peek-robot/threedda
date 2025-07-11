@@ -38,7 +38,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_path=False, obs_mask=False, obs_outlier=False, device=None):
+def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_no_proprio=False,obs_path=False, obs_mask=False, obs_outlier=False, device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -57,7 +57,9 @@ def prepare_batch(sample, clip_embedder, history, horizon, obs_crop=False, obs_c
     # (optional) add noise to qpos obs
     if obs_noise_std > 0:
         curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape)
-    
+    if obs_no_proprio:
+        curr_gripper = torch.zeros_like(curr_gripper)
+
     for k in sample["obs"].keys():
         sample["obs"][k] = sample["obs"][k][:, history-1]
 
@@ -208,6 +210,7 @@ def get_model(da_config, device="cpu"):
             diffusion_timesteps=da_config.diffusion_timesteps,
             nhist=da_config.history,
             relative=False,
+            traj_relative=da_config.traj_relative,
             lang_enhanced=False
         )
 
