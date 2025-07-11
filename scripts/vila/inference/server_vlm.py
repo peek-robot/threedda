@@ -40,7 +40,7 @@ class ChatMessage(BaseModel):
     content: Union[str, List[Union[TextContent, ImageContent]]]
     
 class ChatCompletionRequest(BaseModel):
-    model: Literal["vila_13b_path_mask_new"]
+    model: Literal["vila_3b_blocks_path_mask_fast"]
     prompt_type: Literal["path_mask", "robotpoint"]
     messages: List[ChatMessage]
     max_tokens: Optional[int] = 1024

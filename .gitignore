@@ -6,6 +6,8 @@ data/
 results/
 tmp/
 
+problem_reduction/robot/sim/franka_emika_panda/tmp.xml
+
 *.gifs
 *.zip
 *.hdf5

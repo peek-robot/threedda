@@ -6,7 +6,7 @@ import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-
+from problem_reduction.utils import ROOT_DIR
 from problem_reduction.datagen.blocks import add_objects_to_mujoco_xml
 from problem_reduction.utils.normalize import normalize
 from problem_reduction.points.pointclouds import depth_to_points
@@ -470,7 +470,6 @@ class CubeEnv(RobotEnv):
         seed=0,
         **kwargs,
     ):
-        self.seed = seed
         self.obs_keys = obs_keys
 
         self.new_setup = False
@@ -483,7 +482,8 @@ class CubeEnv(RobotEnv):
         self.obj_pos_dist = obj_pos_dist
         self.obj_ori_dist = obj_ori_dist
         # self.obj_color_dist = obj_color_dist
-        np.random.seed(self.seed)    
+        self.seed(seed)
+        xml_path = os.path.join(ROOT_DIR, xml_path)
         modified_xml_path = self.generate_xml(xml_path, self.num_objs, self.obj_size)
         super().__init__(modified_xml_path, **kwargs)
 
@@ -507,6 +507,9 @@ class CubeEnv(RobotEnv):
         elif self.num_objs == 2:
             self.color_names = ["blue", "red"]
             self.colors = np.concatenate([self.main_colors[self.color_names[0]], self.main_colors[self.color_names[1]]], axis=0)
+
+    def seed(self, seed):
+        np.random.seed(seed)
 
     def step(self, action):
         super().step(action)
@@ -636,6 +639,7 @@ class CubeEnv(RobotEnv):
 
     def generate_xml(self, xml_path, num_objs, size):
         colors = np.random.uniform([0, 0, 0], [1, 1, 1], size=(num_objs, 3))
+        xml_path = "/home/memmelma/Projects/robotic/problem_reduction/robot/sim/franka_emika_panda/scene_new.xml"
         modified_xml = add_objects_to_mujoco_xml(
             xml_path,
             num_objs=num_objs,

@@ -64,9 +64,7 @@ if __name__ == "__main__":
 
     env_config = {
         # CubeEnv
-        "xml_path": os.path.join(
-            ROOT_DIR, "robot/sim/franka_emika_panda/scene_new.xml"
-        ),
+        "xml_path": "robot/sim/franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.0275,
         # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],

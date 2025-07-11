@@ -14,7 +14,7 @@ import einops
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from tqdm import trange
 import torchvision
 
@@ -22,9 +22,6 @@ import wandb
 from torch.utils.data import DataLoader
 from run_3dda_eval import eval_3dda
 
-import sys
-
-from problem_reduction.threedda.text_embed import CLIPTextEmbedder
 from problem_reduction.threedda.criterion import TrajectoryCriterion
 from problem_reduction.threedda.model import (
     get_model,
@@ -94,7 +91,6 @@ def get_dataloaders_from_mimic(config):
 def train(
     model,
     optimizer,
-    clip_embedder,
     train_loader,
     test_loader,
     best_loss=None,
@@ -104,6 +100,7 @@ def train(
     dataset=None,
     model_config=None,
     output_dir=None,
+    server_ip_vlm=None,
 ):
 
     criterion = TrajectoryCriterion()
@@ -131,7 +128,6 @@ def train(
 
             batch_prepared = prepare_batch(
                 batch,
-                clip_embedder,
                 history=model_config.history,
                 horizon=model_config.horizon,
                 obs_noise_std=model_config.obs_noise_std,
@@ -264,7 +260,6 @@ def train(
 
                 batch_prepared = prepare_batch(
                     batch,
-                    clip_embedder,
                     history=model_config.history,
                     horizon=model_config.horizon,
                     obs_noise_std=model_config.obs_noise_std,
@@ -337,9 +332,9 @@ def train(
                 mode=eval_mode,
                 action_chunking=True,
                 action_chunk_size=8,
-                clip_embedder=clip_embedder,
-                path_mode="open_loop" if model_config.obs_path else None,
-                mask_mode="open_loop" if model_config.obs_mask else None,
+                obs_path=model_config.obs_path,
+                obs_mask=model_config.obs_mask,
+                server_ip_vlm=server_ip_vlm,
             )
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
@@ -534,6 +529,12 @@ if __name__ == "__main__":
         action="store_true",
         help="traj relative",
     )
+    parser.add_argument(
+        "--server_ip_vlm",
+        type=str,
+        default=None,
+        help="server ip vlm",
+    )
     # parse arguments
     args = parser.parse_args()
 
@@ -667,8 +668,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    clip_embedder = CLIPTextEmbedder(device=device)
-
     resume_path = os.path.join(output_dir, "last.pth")
     if args.resume and os.path.exists(resume_path):
 
@@ -708,7 +707,6 @@ if __name__ == "__main__":
     train(
         model,
         optimizer,
-        clip_embedder,
         train_loader,
         test_loader,
         best_loss=best_loss,
@@ -718,4 +716,5 @@ if __name__ == "__main__":
         dataset=args.dataset,
         model_config=model_config,
         output_dir=output_dir,
+        server_ip_vlm=args.server_ip_vlm,
     )

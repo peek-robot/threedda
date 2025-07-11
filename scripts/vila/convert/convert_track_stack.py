@@ -139,14 +139,15 @@ if __name__ == "__main__":
     parser.add_argument('--num_seeds', type=int, default=1, help='number of seeds')
     parser.add_argument('--path_rdp_tolerance', type=float, default=0.05, help='tolerance for RDP path processing')
     parser.add_argument('--mask_rdp_tolerance', type=float, default=0.1, help='tolerance for RDP mask processing')
-    parser.add_argument('--save_sketches_every_n', type=int, default=False, help='save every N-th sketch')
+    parser.add_argument('--save_sketches_every_n', type=int, default=500, help='save every N-th sketch')
     parser.add_argument('--reword_quest', action="store_true", help='reword questions')
     parser.add_argument('--debug', action="store_true", help='debug mode')
 
     args = parser.parse_args()
 
     task = args.task
-    data_path = f"/home/mmemmel/projects/vila/data/{args.task}.hdf5"
+    # data_path = f"/home/mmemmel/projects/vila/data/{args.task}.hdf5"
+    data_path = f"/gscratch/weirdlab/memmelma/simvla/pick_data_gen/data/{args.task}.hdf5"
 
     if args.debug:
         args.data_dir = os.path.join(args.data_dir, "debug")
@@ -157,20 +158,7 @@ if __name__ == "__main__":
 
         args.save_sketches_every_n = 1
     else:
-        args.data_dir = os.path.join(args.data_dir, f"stack_{args.target}_subtraj")
-
-
-    # copy data_path to /tmp/dataset_tmp.h5
-    tmp_path = f"/tmp/{task}/dataset_tmp.h5"
-    import shutil
-    # if doesn't exist, copy
-    # if not os.path.exists(tmp_track_path):
-    # remove tmp_track_path if exists
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
-    os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
-    shutil.copy(data_path, tmp_path)
-    data_path = tmp_path
+        args.data_dir = os.path.join(args.data_dir, f"{args.task}_{args.target}")
 
     for seed in range(args.num_seeds):
         dataclass = TrackingDataclass(task, args.split, args.target, data_path=data_path, train_test_split=args.train_test_split, img_key=args.img_key, seed=seed)

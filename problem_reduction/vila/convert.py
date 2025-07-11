@@ -5,18 +5,17 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+from tqdm import tqdm
 
-from vila_utils.utils.slurm import get_slurm_time_left
-from tqdm import tqdm, trange
-from vila_utils.utils.encode import smooth_path_rdp, scale_path
-from vila_utils.utils.prompts import get_prompt, get_answer_from_path, get_answer_from_lang
-from vila_utils.utils.decode import get_path_from_answer, add_path_2d_to_img, add_mask_2d_to_img
-
+from problem_reduction.vila.slurm import get_slurm_time_left
+from problem_reduction.vila.encode import smooth_path_rdp, scale_path
+from problem_reduction.vila.prompts import get_prompt, get_answer_from_path, get_answer_from_lang
+from problem_reduction.vila.decode import get_path_from_answer, add_path_2d_to_img, add_mask_2d_to_img
+from problem_reduction.vila.rewording import RewordLLM
 
 def convert_dataset(task, dataclass, split, data_dir, prompt_type, reword_quest=False, num_samples=np.inf, min_points=3, path_rdp_tolerance=0.05, mask_rdp_tolerance=0.05, save_sketches_every_n=False):
     
     if reword_quest:
-        from vila_utils.utils.rewording import RewordLLM
         reword_llm = RewordLLM(model_name="meta-llama/Llama-3.1-8B-Instruct", n_samples=5)
         
     # reword_llm.reword("Clean the top of the shelf with a washcloth.")

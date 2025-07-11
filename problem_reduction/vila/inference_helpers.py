@@ -104,15 +104,16 @@ def add_path_2d_to_img(
 
     return img_out
 
-
-from llava.mm_utils import (
-    get_model_name_from_path,
-    process_images,
-    tokenizer_image_token,
-)
-from llava.conversation import conv_templates
-from llava.utils import disable_torch_init
-
+try:
+    from llava.mm_utils import (
+        get_model_name_from_path,
+        process_images,
+        tokenizer_image_token,
+    )
+    from llava.conversation import conv_templates
+    from llava.utils import disable_torch_init
+except:
+    print("WARNING: llava installation not found, only API inference available")
 
 def load_model(version, args):
     if version == "vila":
@@ -300,7 +301,7 @@ def inference_vila_perplexity(message, args, target):
     return output_string
 
 
-def add_answer_to_img(img, answer, prompt_type, color="red", add_mask=True):
+def add_answer_to_img(img, answer, prompt_type, color="red", line_size=3, add_mask=True):
 
     out = get_path_from_answer(answer, prompt_type)
 
@@ -330,11 +331,11 @@ def add_answer_to_img(img, answer, prompt_type, color="red", add_mask=True):
     mask_pixels = int(h * 0.15)
     if "mask" in prompt_type and scaled_mask is not None and add_mask:
         img = add_mask_2d_to_img(img, scaled_mask, mask_pixels=mask_pixels)
-    mask = get_mask_2d(img, scaled_mask, mask_pixels=mask_pixels)
+    # mask = get_mask_2d(img, scaled_mask, mask_pixels=mask_pixels)
 
     if "path" in prompt_type and scaled_path is not None:
         img = add_path_2d_to_img(
-            img, scaled_path, line_size=3, circle_size=0, plot_lines=True, color=color
+            img, scaled_path, line_size=line_size, circle_size=0, plot_lines=True, color=color
         )
 
     return img, path, mask
@@ -441,9 +442,9 @@ def vila_inference(rgb, lang_instr, prompt_type="path_mask", args={}):
     return image, path_pred, mask_pred
 
 
-def vila_inference_api(server_ip, rgb, lang_instr, prompt_type="path_mask"):
+def vila_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="path_mask"):
 
-    answer_pred = send_request(rgb, lang_instr, prompt_type, server_ip)
+    answer_pred = send_request(rgb, lang_instr, prompt_type=prompt_type, server_ip=server_ip, model_name=model_name)
 
     image, path_pred, mask_pred = add_answer_to_img(
         rgb, answer_pred, prompt_type, color="red", add_mask=True

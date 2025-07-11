@@ -59,7 +59,7 @@ ROOT_DIR=$(pwd)
 pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
 pip install dgl==1.1.3+cu118 -f https://data.dgl.ai/wheels/cu118/repo.html
 pip install diffusers==0.11.1 transformers==4.30.2 huggingface-hub==0.25.2
-pip install openai-clip
+pip install openai openai-clip
 # downgrade numpy to ensure diffusers compatiblity
 pip install "numpy<2"
 
