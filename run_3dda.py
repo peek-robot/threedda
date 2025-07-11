@@ -135,6 +135,7 @@ def train(
                 history=model_config.history,
                 horizon=model_config.horizon,
                 obs_noise_std=model_config.obs_noise_std,
+                obs_no_proprio=model_config.obs_no_proprio,
                 obs_crop=model_config.obs_crop,
                 obs_crop_cube=model_config.obs_crop_cube,
                 obs_outlier=model_config.obs_outlier,
@@ -184,12 +185,14 @@ def train(
             }
         )
         act_dim = acts.shape[-1]
-        plot_actions_and_log_wandb(
-            acts.cpu().numpy().reshape(-1, act_dim),
-            batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim),
-            "train/actions",
-            epoch,
-        )
+        
+        if epoch % 25 == 0 and epoch > 0:
+            plot_actions_and_log_wandb(
+                acts.cpu().numpy().reshape(-1, act_dim),
+                batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim),
+                "train/actions",
+                epoch,
+            )
 
         if epoch == 0:
 
@@ -265,6 +268,7 @@ def train(
                     history=model_config.history,
                     horizon=model_config.horizon,
                     obs_noise_std=model_config.obs_noise_std,
+                    obs_no_proprio=model_config.obs_no_proprio,
                     obs_crop=model_config.obs_crop,
                     obs_crop_cube=model_config.obs_crop_cube,
                     obs_outlier=model_config.obs_outlier,
@@ -508,6 +512,11 @@ if __name__ == "__main__":
         help="normalize loss",
     )
     parser.add_argument(
+        "--obs_no_proprio",
+        action="store_true",
+        help="no proprio",
+    )
+    parser.add_argument(
         "--horizon",
         type=int,
         default=16,
@@ -516,6 +525,11 @@ if __name__ == "__main__":
         "--slurm",
         action="store_true",
         help="slurm",
+    )
+    parser.add_argument(
+        "--traj_relative",
+        action="store_true",
+        help="traj relative",
     )
     # parse arguments
     args = parser.parse_args()
@@ -559,7 +573,7 @@ if __name__ == "__main__":
         "num_attn_heads": 6,
         "diffusion_timesteps": 100,
         "action_space": args.action_space,  # "joint" or "abs_ee"
-        "traj_relative": True,
+        "traj_relative": args.traj_relative,
         "joint_loc_bounds": joint_loc_bounds,
         "gripper_loc_bounds": None,
         "loss_weights": [30, 1],
@@ -568,6 +582,7 @@ if __name__ == "__main__":
         # ablations
         "fps_subsampling_factor": args.fps_subsampling_factor,
         "obs_noise_std": args.obs_noise_std,
+        "obs_no_proprio": args.obs_no_proprio,
         "obs_crop": args.obs_crop,
         "obs_crop_cube": args.obs_crop_cube,
         "obs_outlier": args.obs_outlier,
