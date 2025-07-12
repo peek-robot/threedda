@@ -6,6 +6,7 @@ data/
 results/
 tmp/
 
+problem_reduction.egg-info
 problem_reduction/robot/sim/franka_emika_panda/tmp.xml
 
 *.gifs

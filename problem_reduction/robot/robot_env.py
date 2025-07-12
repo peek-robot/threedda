@@ -6,7 +6,7 @@ import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from problem_reduction.utils import ROOT_DIR
+from problem_reduction import ROOT_DIR
 from problem_reduction.datagen.blocks import add_objects_to_mujoco_xml
 from problem_reduction.utils.normalize import normalize
 from problem_reduction.points.pointclouds import depth_to_points
