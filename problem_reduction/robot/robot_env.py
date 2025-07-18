@@ -639,7 +639,6 @@ class CubeEnv(RobotEnv):
 
     def generate_xml(self, xml_path, num_objs, size):
         colors = np.random.uniform([0, 0, 0], [1, 1, 1], size=(num_objs, 3))
-        xml_path = "/home/memmelma/Projects/robotic/problem_reduction/robot/sim/franka_emika_panda/scene_new.xml"
         modified_xml = add_objects_to_mujoco_xml(
             xml_path,
             num_objs=num_objs,
