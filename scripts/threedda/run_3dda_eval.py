@@ -66,6 +66,7 @@ def visualize_pointcloud(env, data_path, demo_idx=0):
     )
 
 def eval_3dda(
+    task,
     data_path,
     real_data_path=None,
 
@@ -82,9 +83,9 @@ def eval_3dda(
 
     obs_path=False,
     obs_mask=False,
+    obs_mask_w_path=False,
     open_loop_obs_key="obs",
     server_ip_vlm=None,
-
     real=False,
 ):
     
@@ -256,6 +257,7 @@ def eval_3dda(
                     obs_noise_std=0.0,
                     obs_path=obs_path,
                     obs_mask=obs_mask,
+                    obs_mask_w_path=obs_mask_w_path,
                     device=device,
                 )
 
