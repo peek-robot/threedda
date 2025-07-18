@@ -2,18 +2,24 @@
 	path = third_party/robomimic_pcd
 	url = https://github.com/memmelma/robomimic_pcd
 	branch = master
-
 [submodule "third_party3d_diffuser_actor"]
 	path = third_party/3d_diffuser_actor
 	url = https://github.com/memmelma/3d_diffuser_actor.git
 	branch = master 
-
 [submodule "third_party/VILA"]
 	path = third_party/VILA
 	url = https://github.com/NVlabs/VILA.git
 	branch = vila1.5
-	
 [submodule "third_party/curobo"]
 	path = third_party/curobo
 	url = https://github.com/NVlabs/curobo.git
 	branch = main
+[submodule "third_party/robtis_fork"]
+	path = third_party/robtis_fork
+	url = https://github.com/memmelma/robtis_fork.git
+	branch = marius
+[submodule "third_party/franka_sim2real"]
+	path = third_party/franka_sim2real
+	url = https://github.com/memmelma/franka_sim2real.git
+	branch = main
+	
