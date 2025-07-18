@@ -113,3 +113,21 @@ pip install -e .
 ```bash
 python scripts/vila/inference/server_vlm.py --model_path memmelma/vila_3b_blocks_path_mask_fast
 ```
+
+# real robot - Franka
+
+### install controller (Markus' robits)
+```bash
+ROOT_DIR=$(pwd)
+cd third_party/robtis_fork
+pip install -e .
+cd $ROOT_DIR
+```
+
+### install robot env and perception
+```bash
+ROOT_DIR=$(pwd)
+cd third_party/franka_sim2real
+pip install -e .
+cd $ROOT_DIR
+```
