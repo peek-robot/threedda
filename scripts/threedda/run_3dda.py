@@ -328,6 +328,8 @@ def train(
 
         if True: # epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
             eval_mode = "closed_loop"
+            n_rollouts = 10 if "pick_and_place" in dataset else 32
+            n_steps = 112 if "pick_and_place" in dataset else 70
             successes, videos, instructions = eval_3dda(
                 task=task,
                 policy=model,
@@ -336,6 +338,8 @@ def train(
                 mode=eval_mode,
                 action_chunking=True,
                 action_chunk_size=8,
+                n_rollouts=n_rollouts,
+                n_steps=n_steps,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 server_ip_vlm=server_ip_vlm,

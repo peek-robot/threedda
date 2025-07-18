@@ -17,6 +17,53 @@ from problem_reduction.utils.normalize import denormalize
 
 from problem_reduction.vila.inference_helpers import vila_inference_api
 
+def visualize_pointcloud(env, data_path, demo_idx=0):
+    def depth_to_points(depth, intrinsic, extrinsic, depth_scale=1000.0):
+        height, width = depth.shape[:2]
+        depth = depth.squeeze() / depth_scale
+        xlin = np.linspace(0, width - 1, width)
+        ylin = np.linspace(0, height - 1, height)
+        px, py = np.meshgrid(xlin, ylin)
+        px = (px - intrinsic[0, 2]) * (depth / intrinsic[0, 0])
+        py = (py - intrinsic[1, 2]) * (depth / intrinsic[1, 1])
+        points = np.stack((px, py, depth, np.ones(depth.shape)), axis=-1)
+        points = (extrinsic @ points.reshape(-1, 4).T).T
+        points = points[:, :3]
+        return points
+
+    from fs2r.utils.meshcat import create_visualizer, visualize_pointcloud
+    vis = create_visualizer()
+
+    obs_real = env.get_obs()
+    H, W = obs_real["depth"].shape
+    points = depth_to_points(obs_real["depth"].reshape(H, W), obs_real["camera_intrinsic"].reshape(3, 3), obs_real["camera_extrinsic"].reshape(4, 4), depth_scale=1000.)
+    points = points.reshape(H, W, 3)
+    colors = obs_real["rgb"].reshape(H, W, 3) / 255.
+
+    visualize_pointcloud(
+        vis, 'points_real',
+        pc=points,
+        color=colors * 255.,
+        # color=np.ones_like(points) * [0., 0., 255.],
+        size=0.01
+    )
+
+    with h5py.File(data_path, "r", swmr=True) as f:
+        open_loop_obs = {k: v[:] for k, v in f["data"][f"demo_{demo_idx}"]["obs"].items()}
+
+    obs_sim = open_loop_obs
+    B, H, W = obs_sim["depth"].shape
+    points_sim = depth_to_points(obs_sim["depth"][0].reshape(H, W), obs_sim["camera_intrinsic"][0].reshape(3, 3), obs_sim["camera_extrinsic"][0].reshape(4, 4), depth_scale=1000.)
+    points_sim = points_sim.reshape(H, W, 3)
+    colors_sim = obs_sim["rgb"][0].reshape(H, W, 3) / 255.
+
+    visualize_pointcloud(
+        vis, 'points_sim',
+        pc=points_sim,
+        # color=colors_sim * 255.,
+        color=np.ones_like(points_sim) * [255., 0., 0.],
+        size=0.01
+    )
 
 def eval_3dda(
     task,
@@ -31,29 +78,16 @@ def eval_3dda(
     action_chunking=True,
     action_chunk_size=8,
 
-    n_rollouts=None,
-    n_steps=None,
+    n_rollouts=10,
+    n_steps=112,
 
     obs_path=False,
     obs_mask=False,
     obs_mask_w_path=False,
     open_loop_obs_key="obs",
     server_ip_vlm=None,
+    real=False,
 ):
-
-    # if "pick_and_place" in data_path:
-    #     task = "pick_and_place"
-    # elif "pick" in data_path:
-    #     task = "pick"
-    # else:
-    #     raise ValueError(f"Invalid task: {task}")
-
-    if (n_rollouts is None or n_steps is None) and task == "pick_and_place":
-        n_steps = 128
-        n_rollouts = 10
-    elif (n_rollouts is None or n_steps is None) and task == "pick":
-        n_steps = 72
-        n_rollouts = 25
     
     if mode == "open_loop":
         action_chunking = False
@@ -120,8 +154,31 @@ def eval_3dda(
 
                 n_steps = open_loop_actions.shape[0] - 1
 
-        env = CubeEnv(**env_config)
-        env.seed(seed + i)
+        if real:
+            from fs2r import BASE_DIR
+            from fs2r.robot_env import RobotEnv
+            from fs2r.utils.pointcloud import read_calibration_file
+
+            calib_file = os.path.join(BASE_DIR, "perception/calibrations", "most_recent_calib.json")
+            calib_dict = read_calibration_file(calib_file)
+            env_config = {
+                "address": "172.16.0.1",
+                "port": 5050,
+                "camera_index": 0,
+                "obs_keys": ["lang_instr", "qpos", "qpos_normalized", "gripper_state_discrete", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
+                "calib_dict": calib_dict,
+                "foundation_stereo": True,
+                "img_resize": (128, 128),
+            }
+            env = RobotEnv(**env_config)
+            env.set_lang_instr("pick up the blue cube")
+            if True:
+                visualize_pointcloud(env, data_path)
+                import IPython; IPython.embed()
+        else:
+            env = CubeEnv(**env_config)
+            env.seed(seed + i)
+
         obs = env.reset()
 
         if (
@@ -201,6 +258,7 @@ def eval_3dda(
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
+                    obs_outlier=real,
                     device=device,
                 )
 
@@ -298,6 +356,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="3dda_closeup")
+    parser.add_argument("--task", type=str, default="pick_and_place")
     parser.add_argument("--ckpt", type=str, default="best")
     parser.add_argument("--ckpt_dir", type=str, default=None)
 
@@ -310,9 +369,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_action_chunking", action="store_true", help="Enable action chunking"
     )
+    parser.add_argument(
+        "--real", action="store_true", help="Use real robot"
+    )
     parser.add_argument("--action_chunk_size", type=int, default=8)
     parser.add_argument("--n_rollouts", type=int, default=1)
-    parser.add_argument("--n_steps", type=int, default=70)
+    parser.add_argument("--n_steps", type=int, default=64)
     parser.add_argument("--path_mode", type=str, default=None)
     parser.add_argument("--mask_mode", type=str, default=None)
     parser.add_argument("--server_ip_vlm", type=str, default=None)
@@ -321,12 +383,13 @@ if __name__ == "__main__":
 
     if args.ckpt_dir is None:
         ckpt_path = (
-            f"/home/memmelma/Projects/robotic/results/{args.name}/{args.ckpt}.pth"
+            f"/home/marius/Projects/problem_reduction/results/{args.name}/{args.ckpt}.pth"
         )
     else:
         ckpt_path = os.path.join(args.ckpt_dir, args.ckpt + ".pth")
 
     successes, videos, instructions = eval_3dda(
+        task=args.task,
         data_path=args.dataset,
         ckpt_path=ckpt_path,
         mode=args.mode,
@@ -334,9 +397,11 @@ if __name__ == "__main__":
         action_chunk_size=args.action_chunk_size,
         n_rollouts=args.n_rollouts,
         n_steps=args.n_steps,
-        path_mode=args.path_mode,
-        mask_mode=args.mask_mode,
+        obs_path=False,
+        obs_mask=False,
+        obs_mask_w_path=False,
         server_ip_vlm=args.server_ip_vlm,
+        real=args.real,
     )
 
     save_dir = os.path.join(os.path.dirname(ckpt_path), args.mode, args.ckpt)
