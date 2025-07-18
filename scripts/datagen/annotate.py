@@ -59,18 +59,25 @@ if __name__ == "__main__":
         # HACK: single sub-task for now
         split_size = -1
         for split_idx in range(1):
-            # split_size = 15
-            # for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
+        # split_size = 15
+        # for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
 
             # inference
-            if args.server_ip is None:
-                image, path, mask = vila_inference(
-                    rgbs[split_idx * split_size], lang_instr, args=model_args
-                )
-            else:
-                image, path, mask = vila_inference_api(
-                    args.server_ip, rgbs[split_idx * split_size], lang_instr
-                )
+            try:
+                if args.server_ip is None:
+                    image = rgbs[split_idx * split_size]
+                    image, path, mask = vila_inference(
+                        image, lang_instr, args=model_args
+                    )
+                else:
+                    image = rgbs[split_idx * split_size]
+                    image, path, mask = vila_inference_api(
+                        image, lang_instr, model_name=args.model_path, server_ip=args.server_ip
+                    )
+            except Exception as e:
+                print(e)
+                path = np.zeros((1, 2))
+                mask = np.zeros((1, 2))
             images.append(image)
 
             # path shape (N, 2) pad N with zeros until N=P

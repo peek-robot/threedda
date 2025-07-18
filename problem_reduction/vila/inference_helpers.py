@@ -362,8 +362,12 @@ def send_request(
 
     # Encode image to base64
     image_resized = np.asarray(image_resized)
-    _, encoded_image_array = cv2.imencode(".jpg", image_resized)
-    encoded_image = base64.b64encode(encoded_image_array.tobytes()).decode("utf-8")
+    # _, encoded_image_array = cv2.imencode(".jpg", image_resized)
+    # encoded_image = base64.b64encode(encoded_image_array.tobytes()).decode("utf-8")
+
+    buffer = BytesIO()
+    PIL.Image.fromarray(image_resized).save(buffer, format='JPEG')
+    encoded_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
     if verbose:
         print(f"Sending request with quest: {quest}")

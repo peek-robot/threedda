@@ -189,7 +189,9 @@ if __name__ == "__main__":
         # visualize motion
         if i % 100 == 0 or i < 10:
             imgs = np.array(data_collector.obs["rgb"])
-            imageio.mimsave(os.path.join(save_dir, "gifs", f"img_{i}.gif"), imgs)
+            save_dir_gifs = os.path.join(save_dir, "gifs")
+            os.makedirs(save_dir_gifs, exist_ok=True)
+            imageio.mimsave(os.path.join(save_dir_gifs, f"img_{i}.gif"), imgs)
 
         data_collector.save()
 
