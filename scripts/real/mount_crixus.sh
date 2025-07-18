@@ -9,7 +9,7 @@ is_mounted() {
 # Mount results directory if not already mounted
 if ! is_mounted ~/Projects/problem_reduction/results; then
     echo "Mounting results directory..."
-    sshfs crixus:/home/memmelma/Projects/robotic/results ~/Projects/problem_reduction/results
+    sshfs crixus:/home/memmelma/Projects/problem_reduction/results ~/Projects/problem_reduction/results
     if [ $? -eq 0 ]; then
         echo "Results directory mounted successfully"
     else
@@ -22,7 +22,7 @@ fi
 # Mount data directory if not already mounted
 if ! is_mounted ~/Projects/problem_reduction/data; then
     echo "Mounting data directory..."
-    sshfs crixus:/home/memmelma/Projects/robotic/gifs_curobo ~/Projects/problem_reduction/data
+    sshfs crixus:/home/memmelma/Projects/problem_reduction/data ~/Projects/problem_reduction/data
     if [ $? -eq 0 ]; then
         echo "Data directory mounted successfully"
     else
