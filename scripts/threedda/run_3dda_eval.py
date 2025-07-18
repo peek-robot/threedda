@@ -258,6 +258,7 @@ def eval_3dda(
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
+                    obs_outlier=real,
                     device=device,
                 )
 
@@ -355,6 +356,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="3dda_closeup")
+    parser.add_argument("--task", type=str, default="pick_and_place")
     parser.add_argument("--ckpt", type=str, default="best")
     parser.add_argument("--ckpt_dir", type=str, default=None)
 
@@ -367,9 +369,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_action_chunking", action="store_true", help="Enable action chunking"
     )
+    parser.add_argument(
+        "--real", action="store_true", help="Use real robot"
+    )
     parser.add_argument("--action_chunk_size", type=int, default=8)
     parser.add_argument("--n_rollouts", type=int, default=1)
-    parser.add_argument("--n_steps", type=int, default=70)
+    parser.add_argument("--n_steps", type=int, default=64)
     parser.add_argument("--path_mode", type=str, default=None)
     parser.add_argument("--mask_mode", type=str, default=None)
     parser.add_argument("--server_ip_vlm", type=str, default=None)
@@ -378,12 +383,13 @@ if __name__ == "__main__":
 
     if args.ckpt_dir is None:
         ckpt_path = (
-            f"/home/memmelma/Projects/robotic/results/{args.name}/{args.ckpt}.pth"
+            f"/home/marius/Projects/problem_reduction/results/{args.name}/{args.ckpt}.pth"
         )
     else:
         ckpt_path = os.path.join(args.ckpt_dir, args.ckpt + ".pth")
 
     successes, videos, instructions = eval_3dda(
+        task=args.task,
         data_path=args.dataset,
         ckpt_path=ckpt_path,
         mode=args.mode,
@@ -391,9 +397,11 @@ if __name__ == "__main__":
         action_chunk_size=args.action_chunk_size,
         n_rollouts=args.n_rollouts,
         n_steps=args.n_steps,
-        path_mode=args.path_mode,
-        mask_mode=args.mask_mode,
+        obs_path=False,
+        obs_mask=False,
+        obs_mask_w_path=False,
         server_ip_vlm=args.server_ip_vlm,
+        real=args.real,
     )
 
     save_dir = os.path.join(os.path.dirname(ckpt_path), args.mode, args.ckpt)
