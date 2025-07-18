@@ -89,6 +89,7 @@ def get_dataloaders_from_mimic(config):
 
 
 def train(
+    task,
     model,
     optimizer,
     train_loader,
@@ -137,6 +138,7 @@ def train(
                 obs_outlier=model_config.obs_outlier,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
+                obs_mask_w_path=model_config.obs_mask_w_path,
                 device=device,
             )
 
@@ -269,6 +271,7 @@ def train(
                     obs_outlier=model_config.obs_outlier,
                     obs_path=model_config.obs_path,
                     obs_mask=model_config.obs_mask,
+                    obs_mask_w_path=model_config.obs_mask_w_path,
                     device=device,
                 )
 
@@ -323,9 +326,10 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        if epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        if True: # epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
             eval_mode = "closed_loop"
             successes, videos, instructions = eval_3dda(
+                task=task,
                 policy=model,
                 model_config=model_config,
                 data_path=dataset,
@@ -388,6 +392,7 @@ if __name__ == "__main__":
         description="robomimic training script for SimPLER (RoboVerse)"
     )
     parser.add_argument("--name", type=str, required=True, help="experiment name")
+    parser.add_argument("--task", type=str, required=True, help="task")
     parser.add_argument(
         "--action_space", type=str, default="joint", help="action space"
     )
@@ -470,6 +475,11 @@ if __name__ == "__main__":
         "--obs_mask",
         action="store_true",
         help="use mask",
+    )
+    parser.add_argument(
+        "--obs_mask_w_path",
+        action="store_true",
+        help="use mask w/ path",
     )
     parser.add_argument(
         "--obs_noise_std",
@@ -592,6 +602,7 @@ if __name__ == "__main__":
         "obs_outlier": args.obs_outlier,
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
+        "obs_mask_w_path": args.obs_mask_w_path,
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
         "high_res_features": args.high_res_features,
@@ -609,6 +620,9 @@ if __name__ == "__main__":
         low_dim_keys.append("path_vlm")
     if model_config.obs_mask:
         low_dim_keys.append("mask_vlm")
+    if model_config.obs_mask_w_path:
+        low_dim_keys.append("mask_vlm")
+        low_dim_keys.append("path_vlm")
 
     if args.slurm:
         import shutil
@@ -705,10 +719,11 @@ if __name__ == "__main__":
         }
 
     train(
-        model,
-        optimizer,
-        train_loader,
-        test_loader,
+        task=args.task,
+        model=model,
+        optimizer=optimizer,
+        train_loader=train_loader,
+        test_loader=test_loader,
         best_loss=best_loss,
         start_epoch=start_epoch,
         device=device,

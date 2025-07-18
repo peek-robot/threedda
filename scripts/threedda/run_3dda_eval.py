@@ -19,6 +19,7 @@ from problem_reduction.vila.inference_helpers import vila_inference_api
 
 
 def eval_3dda(
+    task,
     data_path,
     real_data_path=None,
 
@@ -35,23 +36,24 @@ def eval_3dda(
 
     obs_path=False,
     obs_mask=False,
+    obs_mask_w_path=False,
     open_loop_obs_key="obs",
     server_ip_vlm=None,
 ):
 
-    if "pick_and_place" in data_path:
-        task = "pick_and_place"
-    elif "pick" in data_path:
-        task = "pick"
-    else:
-        raise ValueError(f"Invalid task: {task}")
+    # if "pick_and_place" in data_path:
+    #     task = "pick_and_place"
+    # elif "pick" in data_path:
+    #     task = "pick"
+    # else:
+    #     raise ValueError(f"Invalid task: {task}")
 
     if (n_rollouts is None or n_steps is None) and task == "pick_and_place":
-        n_steps = 112
+        n_steps = 128
         n_rollouts = 10
     elif (n_rollouts is None or n_steps is None) and task == "pick":
-        n_steps = 70
-        n_rollouts = 32
+        n_steps = 72
+        n_rollouts = 25
     
     if mode == "open_loop":
         action_chunking = False
@@ -198,6 +200,7 @@ def eval_3dda(
                     obs_noise_std=0.0,
                     obs_path=obs_path,
                     obs_mask=obs_mask,
+                    obs_mask_w_path=obs_mask_w_path,
                     device=device,
                 )
 
