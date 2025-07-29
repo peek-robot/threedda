@@ -326,10 +326,10 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        if True: # epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        if epoch > 200 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
             eval_mode = "closed_loop"
-            n_rollouts = 10 if "pick_and_place" in dataset else 32
-            n_steps = 112 if "pick_and_place" in dataset else 70
+            n_rollouts = 1 if task == "pick_and_place" else 32
+            n_steps = 128 if task == "pick_and_place" else 70
             successes, videos, instructions = eval_3dda(
                 task=task,
                 policy=model,
