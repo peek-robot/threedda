@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_outlier=False, masking_ratio=0.1, device=None):
+def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, masking_ratio=0.1, device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -59,7 +59,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # store path as 2d image
     if obs_path:
         path_rgbs = []
-        for path, rgb in zip(sample["obs"]["path_vlm"], sample["obs"][img_key]):
+        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
@@ -72,7 +72,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # store mask as 2d depth
     if obs_mask:
         mask_depths = []
-        for mask, depth in zip(sample["obs"]["mask_vlm"], sample["obs"][depth_key]):
+        for mask, depth in zip(sample["obs"]["mask" if obs_gt else "mask_vlm"], sample["obs"][depth_key]):
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
@@ -85,7 +85,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # store mask w/ pathas 2d depth
     if obs_mask_w_path:
         mask_depths = []
-        for mask, path, depth in zip(sample["obs"]["mask_vlm"], sample["obs"]["path_vlm"], sample["obs"][depth_key]):
+        for mask, path, depth in zip(sample["obs"]["mask" if obs_gt else "mask_vlm"], sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][depth_key]):
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
