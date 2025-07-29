@@ -65,6 +65,24 @@ def visualize_pointcloud(env, data_path, demo_idx=0):
         size=0.01
     )
 
+def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, model_name="vila_3b_blocks_path_mask_fast", server_ip=None, obs_path=False, obs_mask=False, vlm_cache=None, vlm_cache_step=0):
+    if vlm_cache is None or vlm_cache_step < timestep % update_every_timesteps:
+        vlm_cache_step = timestep % update_every_timesteps
+        image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
+        vlm_cache = {
+            "path_pred": path_pred,
+            "mask_pred": mask_pred,
+        }
+    
+    if obs_path:
+        obs["path_vlm"] = vlm_cache["path_pred"]
+        obs["path"] = vlm_cache["path_pred"]
+    if obs_mask:
+        obs["mask_vlm"] = vlm_cache["mask_pred"]
+        obs["mask"] = vlm_cache["mask_pred"]
+
+    return obs, vlm_cache, vlm_cache_step
+    
 def eval_3dda(
     task,
     data_path,
@@ -84,8 +102,11 @@ def eval_3dda(
     obs_path=False,
     obs_mask=False,
     obs_mask_w_path=False,
+    obs_gt=False,
     open_loop_obs_key="obs",
+    model_name_vlm="vila_3b_path_mask_fast",
     server_ip_vlm=None,
+    update_every_timesteps_vlm=25,
     real=False,
 ):
     
@@ -210,23 +231,16 @@ def eval_3dda(
             obs = {
                 k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
             }
-        vlm_cache = None
+
         if server_ip_vlm is None and (obs_path or obs_mask):
             if obs_path:
-                obs["path_vlm"] = open_loop_obs["path_vlm"][0]
+                obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
             if obs_mask:
-                obs["mask_vlm"] = open_loop_obs["mask_vlm"][0]
+                obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
         elif obs_path or obs_mask:
-            image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name="vila_3b_blocks_path_mask_fast", server_ip=server_ip_vlm, prompt_type="path_mask")
-            if obs_path:
-                obs["path_vlm"] = path_pred
-            if obs_mask:
-                obs["mask_vlm"] = mask_pred
-            vlm_cache = {
-                "path_pred": path_pred,
-                "mask_pred": mask_pred,
-            }
-
+            # initial vlm predictions and cache
+            obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask)
+        
         framestack.reset()
         framestack.add_obs(obs)
 
@@ -258,6 +272,7 @@ def eval_3dda(
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
+                    obs_gt=obs_gt,
                     obs_outlier=real,
                     device=device,
                 )
@@ -299,15 +314,12 @@ def eval_3dda(
                     }
                 if server_ip_vlm is None and (obs_path or obs_mask):
                     if obs_path:
-                        obs["path_vlm"] = open_loop_obs["path_vlm"][0]
+                        obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
                     if obs_mask:
-                        obs["mask_vlm"] = open_loop_obs["mask_vlm"][0]
+                        obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
                 elif obs_path or obs_mask:
-                    # HACK: don't recompute vlm for each step
-                    if obs_path:
-                        obs["path_vlm"] = vlm_cache["path_pred"]
-                    if obs_mask:
-                        obs["mask_vlm"] = vlm_cache["mask_pred"]
+                    # update vlm predictions and cache -> only compute new path/mask predictions every 15 steps
+                    obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=j*action_chunk_size, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask, vlm_cache=vlm_cache, vlm_cache_step=vlm_cache_step)
 
                 framestack.add_obs(obs)
                 imgs.append(np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1))
@@ -378,7 +390,7 @@ if __name__ == "__main__":
     parser.add_argument("--path_mode", type=str, default=None)
     parser.add_argument("--mask_mode", type=str, default=None)
     parser.add_argument("--server_ip_vlm", type=str, default=None)
-
+    parser.add_argument("--update_every_timesteps_vlm", type=int, default=25)
     args = parser.parse_args()
 
     if args.ckpt_dir is None:
@@ -402,6 +414,7 @@ if __name__ == "__main__":
         obs_mask_w_path=False,
         server_ip_vlm=args.server_ip_vlm,
         real=args.real,
+        update_every_timesteps_vlm=args.update_every_timesteps_vlm,
     )
 
     save_dir = os.path.join(os.path.dirname(ckpt_path), args.mode, args.ckpt)

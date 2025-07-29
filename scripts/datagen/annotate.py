@@ -19,7 +19,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_path", type=str, default="memmelma/vila_3b_blocks_path_mask_fast"
+        # "--model_path", type=str, default="memmelma/vila_3b_blocks_path_mask_fast"
+        "--model_path", type=str, default="memmelma/vila_3b_path_mask_fast"
     )
     parser.add_argument(
         "--path", type=str, default="data/pick_and_place_1000_3_objs_va_high_cam.hdf5"
@@ -57,10 +58,10 @@ if __name__ == "__main__":
 
         paths_pad, masks_pad, images = [], [], []
         # HACK: single sub-task for now
-        split_size = -1
-        for split_idx in range(1):
-        # split_size = 15
-        # for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
+        # split_size = -1
+        # for split_idx in range(1):
+        split_size = 25
+        for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
 
             # inference
             try:
