@@ -501,8 +501,9 @@ class CubeEnv(RobotEnv):
         }
         
         if self.num_objs == 1:
-            self.main_colors["scotch_blue"] = [0.03921569, 0.43529412, 0.79607843]
-            self.color_names = ["scotch_blue"]
+            # self.main_colors["scotch_blue"] = [0.03921569, 0.43529412, 0.79607843]
+            # self.color_names = ["scotch_blue"]
+            self.color_names = ["blue"]
             self.colors = self.main_colors[self.color_names[0]]
         elif self.num_objs == 2:
             self.color_names = ["blue", "red"]

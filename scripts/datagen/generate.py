@@ -55,7 +55,7 @@ if __name__ == "__main__":
     outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     calib_file = os.path.join(
-        ROOT_DIR, "robot/calibrations", "most_recent_calib_zed_middle.json"
+        ROOT_DIR, "robot/calibrations", "real_07_29_09_34.json"
     )
     calib_dict = read_calibration_file(calib_file)
 
@@ -67,8 +67,9 @@ if __name__ == "__main__":
         "xml_path": "robot/sim/franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.0275,
-        # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
-        "obj_pos_dist": [[0.3, -0.25, 0.03], [0.6, 0.25, 0.03]],
+        "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
+        # NOTE: pick&place was
+        # "obj_pos_dist": [[0.3, -0.25, 0.03], [0.6, 0.25, 0.03]],
         "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 16, np.pi / 16]],
         "seed": 0,
         "obs_keys": [
@@ -96,7 +97,7 @@ if __name__ == "__main__":
         "calib_dict": calib_dict,
         "n_steps": 50,
         "time_steps": 0.002,
-        "reset_qpos_noise_std": 5e-3,
+        "reset_qpos_noise_std": 1e-2, # NOTE: pick&place was 5e-3
         "controller": "abs_joint",
     }
     env = CubeEnv(**env_config)
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     data_config = {
         "n_episodes": args.num_samples,
         "visual_augmentation": args.visual_augmentation,
-        "action_noise_std": 0.0,
+        "action_noise_std": 5e-3, # NOTE: pick&place was 0.0
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
