@@ -102,6 +102,7 @@ def train(
     model_config=None,
     output_dir=None,
     server_ip_vlm=None,
+    model_name_vlm=None,
 ):
 
     criterion = TrajectoryCriterion()
@@ -139,6 +140,7 @@ def train(
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 obs_mask_w_path=model_config.obs_mask_w_path,
+                obs_gt=model_config.obs_gt,
                 device=device,
             )
 
@@ -272,6 +274,7 @@ def train(
                     obs_path=model_config.obs_path,
                     obs_mask=model_config.obs_mask,
                     obs_mask_w_path=model_config.obs_mask_w_path,
+                    obs_gt=model_config.obs_gt,
                     device=device,
                 )
 
@@ -326,10 +329,20 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        if epoch > 200 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        # if epoch > 200 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        if epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+            
             eval_mode = "closed_loop"
-            n_rollouts = 1 if task == "pick_and_place" else 32
-            n_steps = 128 if task == "pick_and_place" else 70
+            
+            if task == "pick_and_place":
+                n_rollouts = 10
+                n_steps = 128
+            elif task == "pick":
+                n_rollouts = 32
+                n_steps = 70
+            else:
+                raise ValueError(f"Invalid task: {task}")
+            
             successes, videos, instructions = eval_3dda(
                 task=task,
                 policy=model,
@@ -342,7 +355,9 @@ def train(
                 n_steps=n_steps,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
+                obs_gt=model_config.obs_gt,
                 server_ip_vlm=server_ip_vlm,
+                model_name_vlm=model_name_vlm,
             )
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
@@ -486,6 +501,11 @@ if __name__ == "__main__":
         help="use mask w/ path",
     )
     parser.add_argument(
+        "--obs_gt",
+        action="store_true",
+        help="use gt",
+    )
+    parser.add_argument(
         "--obs_noise_std",
         type=float,
         default=0.01,
@@ -498,6 +518,7 @@ if __name__ == "__main__":
         help="fps subsampling factor",
     )
     parser.add_argument(
+        # NOTE: increases initial points from 1024 -> 4096 by increasing CLIP feature resolution from 32x32 to 64x64
         "--high_res_features",
         action="store_true",
         help="use high res features",
@@ -544,13 +565,30 @@ if __name__ == "__main__":
         help="traj relative",
     )
     parser.add_argument(
+        "--model_name_vlm",
+        type=str,
+        default="vila_3b_path_mask_fast",
+        help="model name vlm",
+    )
+    parser.add_argument(
         "--server_ip_vlm",
         type=str,
         default=None,
         help="server ip vlm",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="debug",
+    )
     # parse arguments
     args = parser.parse_args()
+
+    if args.debug:
+        args.name = "debug"
+        args.resume = False
+        args.epoch_every_n_steps = 3
+        args.eval_every_n_epochs = 1
 
     print(json.dumps(vars(args)))
 
@@ -607,6 +645,7 @@ if __name__ == "__main__":
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
         "obs_mask_w_path": args.obs_mask_w_path,
+        "obs_gt": args.obs_gt,
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
         "high_res_features": args.high_res_features,
@@ -620,13 +659,15 @@ if __name__ == "__main__":
         "gripper_state_discrete",
         "lang_instr",
     ]
+
+    # set path/mask keys depending on whether to use gt or vlm generated predictions
     if model_config.obs_path:
-        low_dim_keys.append("path_vlm")
+        low_dim_keys.append("path" if model_config.obs_gt else "path_vlm")
     if model_config.obs_mask:
-        low_dim_keys.append("mask_vlm")
+        low_dim_keys.append("mask" if model_config.obs_gt else "mask_vlm")
     if model_config.obs_mask_w_path:
-        low_dim_keys.append("mask_vlm")
-        low_dim_keys.append("path_vlm")
+        low_dim_keys.append("mask" if model_config.obs_gt else "mask_vlm")
+        low_dim_keys.append("path" if model_config.obs_gt else "path_vlm")
 
     if args.slurm:
         import shutil
@@ -711,7 +752,7 @@ if __name__ == "__main__":
 
         configs = {
             "verse_config": mimic_config,
-            "da_config": model_config,
+            "da_config": vars(model_config),
         }
         wandb.init(entity=args.wandb_entity, project=args.wandb_project, config=configs)
         wandb.run.name = f"{args.name}_{wandb.run.name}"
@@ -735,5 +776,6 @@ if __name__ == "__main__":
         dataset=args.dataset,
         model_config=model_config,
         output_dir=output_dir,
+        model_name_vlm=args.model_name_vlm,
         server_ip_vlm=args.server_ip_vlm,
     )
