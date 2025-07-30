@@ -258,7 +258,7 @@ def eval_3dda(
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
-                    obs_outlier=real,
+                    obs_outlier=False, # real,
                     device=device,
                 )
 
@@ -288,7 +288,18 @@ def eval_3dda(
             for t, act in zip(reversed(range(len(act_queue))), act_queue):
                 pred_actions.append(act)
                 
+                # HACK to only render depth for history
+                obs_keys_copy = env.obs_keys.copy()
+                if t > model_config.history:
+                    env.obs_keys.remove("depth")
+                    env.obs_keys.remove("camera_intrinsic")
+                    env.obs_keys.remove("camera_extrinsic")
+                    
                 obs, r, done, info = env.step(act)
+
+                # HACK to only render depth for history
+                env.obs_keys = obs_keys_copy
+
                 obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
 
                 if mode == "open_loop":
@@ -375,8 +386,9 @@ if __name__ == "__main__":
     parser.add_argument("--action_chunk_size", type=int, default=8)
     parser.add_argument("--n_rollouts", type=int, default=1)
     parser.add_argument("--n_steps", type=int, default=64)
-    parser.add_argument("--path_mode", type=str, default=None)
-    parser.add_argument("--mask_mode", type=str, default=None)
+    parser.add_argument("--obs_path", action="store_true", help="Use path observations")
+    parser.add_argument("--obs_mask", action="store_true", help="Use mask observations")
+    parser.add_argument("--obs_mask_w_path", action="store_true", help="Use mask observations with path")
     parser.add_argument("--server_ip_vlm", type=str, default=None)
 
     args = parser.parse_args()
@@ -397,9 +409,9 @@ if __name__ == "__main__":
         action_chunk_size=args.action_chunk_size,
         n_rollouts=args.n_rollouts,
         n_steps=args.n_steps,
-        obs_path=False,
-        obs_mask=False,
-        obs_mask_w_path=False,
+        obs_path=args.obs_path,
+        obs_mask=args.obs_mask,
+        obs_mask_w_path=args.obs_mask_w_path,
         server_ip_vlm=args.server_ip_vlm,
         real=args.real,
     )
