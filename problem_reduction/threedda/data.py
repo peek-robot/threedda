@@ -117,6 +117,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             colors[~valid_mask] = 0.
         return points, colors
     
+    # WARNING: zero_points with min < -1. will also crop the mask predictions from the colors/rgb!
     if obs_crop:
 
         # # no table surface
