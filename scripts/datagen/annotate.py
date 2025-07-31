@@ -26,6 +26,9 @@ if __name__ == "__main__":
         "--path", type=str, default="data/pick_and_place_1000_3_objs_va_high_cam.hdf5"
     )
     parser.add_argument(
+        "--split_size", type=int, default=25
+    )
+    parser.add_argument(
         "--server_ip", type=str, default=None
     )  # https://44ba-198-48-92-26.ngrok-free.app
     args = parser.parse_args()
@@ -60,7 +63,7 @@ if __name__ == "__main__":
         # HACK: single sub-task for now
         # split_size = -1
         # for split_idx in range(1):
-        split_size = 25
+        split_size = args.split_size
         for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
 
             # inference
