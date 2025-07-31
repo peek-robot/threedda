@@ -136,7 +136,10 @@ def load_model(version, args):
                 args.model_path, model_name, args.model_base
             )
         print("standard", args.model_path, args.model_base)
-
+        try:
+            model = torch.compile(model)
+        except:
+            print("WARNING: torch.compile not available")
     # LoRA
     else:
         disable_torch_init()
