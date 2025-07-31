@@ -44,7 +44,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     curr_gripper = torch.cat((qpos[:, :history], gripper_state_discrete[:, :history]), dim=-1)
     # (optional) add noise to qpos obs
     if obs_noise_std > 0:
-        curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape)
+        curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape).to(curr_gripper.device)
     if obs_no_proprio:
         curr_gripper = torch.zeros_like(curr_gripper)
 
@@ -117,6 +117,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             colors[~valid_mask] = 0.
         return points, colors
     
+    # WARNING: zero_points with min < -1. will also crop the mask predictions from the colors/rgb!
     if obs_crop:
 
         # # no table surface
