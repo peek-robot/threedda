@@ -66,8 +66,9 @@ def visualize_pointcloud(env, data_path, demo_idx=0):
     )
 
 def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, model_name="vila_3b_blocks_path_mask_fast", server_ip=None, obs_path=False, obs_mask=False, vlm_cache=None, vlm_cache_step=0):
-    if vlm_cache is None or vlm_cache_step < timestep % update_every_timesteps:
-        vlm_cache_step = timestep % update_every_timesteps
+    if vlm_cache is None or vlm_cache_step < np.floor(timestep / update_every_timesteps).astype(int):
+        vlm_cache_step = np.floor(timestep / update_every_timesteps).astype(int)
+        print("Querying VLM at timestep", timestep, "...")
         image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
         vlm_cache = {
             "path_pred": path_pred,
@@ -181,6 +182,7 @@ def eval_3dda(
             from fs2r.utils.pointcloud import read_calibration_file
 
             calib_file = os.path.join(BASE_DIR, "perception/calibrations", "most_recent_calib.json")
+            print("CALIB FILE", calib_file)
             calib_dict = read_calibration_file(calib_file)
             env_config = {
                 "address": "172.16.0.1",
@@ -303,16 +305,15 @@ def eval_3dda(
             for t, act in zip(reversed(range(len(act_queue))), act_queue):
                 pred_actions.append(act)
                 
-                # HACK to only render depth for history
+                # only render depth for history
                 obs_keys_copy = env.obs_keys.copy()
-                if t > model_config.history:
+                if t >= model_config.history:
+                    env.obs_keys.remove("rgb")
                     env.obs_keys.remove("depth")
                     env.obs_keys.remove("camera_intrinsic")
                     env.obs_keys.remove("camera_extrinsic")
                     
                 obs, r, done, info = env.step(act)
-
-                # HACK to only render depth for history
                 env.obs_keys = obs_keys_copy
 
                 obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
@@ -328,12 +329,14 @@ def eval_3dda(
                         obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
                     if obs_mask:
                         obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
+
                 elif obs_path or obs_mask:
                     # update vlm predictions and cache -> only compute new path/mask predictions every 15 steps
                     obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=j*action_chunk_size, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask, vlm_cache=vlm_cache, vlm_cache_step=vlm_cache_step)
 
                 framestack.add_obs(obs)
-                imgs.append(np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1))
+                if not real:
+                    imgs.append(np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1))
 
                 success = env.is_success(task=task)
                 if success:
