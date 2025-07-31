@@ -338,8 +338,8 @@ def train(
                 n_rollouts = 10
                 n_steps = 128
             elif task == "pick":
-                n_rollouts = 32
-                n_steps = 70
+                n_rollouts = 16
+                n_steps = 72
             else:
                 raise ValueError(f"Invalid task: {task}")
             
@@ -624,7 +624,7 @@ if __name__ == "__main__":
         "horizon": args.horizon,
         "history": args.history,
         "batch_size": 64,
-        "lr": 3e-4,
+        "lr": 5e-4,
         "embedding_dim": 60,
         "num_attn_heads": 6,
         "diffusion_timesteps": 100,
