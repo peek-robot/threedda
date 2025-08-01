@@ -234,14 +234,14 @@ def eval_3dda(
                 k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
             }
 
-        if server_ip_vlm is None and (obs_path or obs_mask):
+        if server_ip_vlm is None and (obs_path or obs_mask or obs_mask_w_path):
             if obs_path:
                 obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
-            if obs_mask:
+            if obs_mask or obs_mask_w_path:
                 obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
-        elif obs_path or obs_mask:
+        elif obs_path or obs_mask or obs_mask_w_path:
             # initial vlm predictions and cache
-            obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask)
+            obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path)
         
         framestack.reset()
         framestack.add_obs(obs)
@@ -327,12 +327,12 @@ def eval_3dda(
                 if server_ip_vlm is None and (obs_path or obs_mask):
                     if obs_path:
                         obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
-                    if obs_mask:
+                    if obs_mask or obs_mask_w_path:
                         obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
 
-                elif obs_path or obs_mask:
+                elif obs_path or obs_mask or obs_mask_w_path:
                     # update vlm predictions and cache -> only compute new path/mask predictions every 15 steps
-                    obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=j*action_chunk_size, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask, vlm_cache=vlm_cache, vlm_cache_step=vlm_cache_step)
+                    obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=j*action_chunk_size, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path, vlm_cache=vlm_cache, vlm_cache_step=vlm_cache_step)
 
                 framestack.add_obs(obs)
                 if not real:

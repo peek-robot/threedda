@@ -355,6 +355,7 @@ def train(
                 n_steps=n_steps,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
+                obs_mask_w_path=model_config.obs_mask_w_path,
                 obs_gt=model_config.obs_gt,
                 server_ip_vlm=server_ip_vlm,
                 model_name_vlm=model_name_vlm,
