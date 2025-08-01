@@ -305,9 +305,9 @@ def eval_3dda(
             for t, act in zip(reversed(range(len(act_queue))), act_queue):
                 pred_actions.append(act)
                 
-                # only render depth for history
                 obs_keys_copy = env.obs_keys.copy()
-                if t >= model_config.history:
+                # only render depth for history in real to speed up inference
+                if real and t >= model_config.history:
                     env.obs_keys.remove("rgb")
                     env.obs_keys.remove("depth")
                     env.obs_keys.remove("camera_intrinsic")
@@ -336,7 +336,7 @@ def eval_3dda(
 
                 framestack.add_obs(obs)
                 if not real:
-                    imgs.append(np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1))
+                    imgs.append(env.get_obs()["rgb"])
 
                 success = env.is_success(task=task)
                 if success:
