@@ -101,9 +101,13 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             mask_depths.append(torch.from_numpy(mask_depth))
         sample["obs"][depth_key] = torch.stack(mask_depths, dim=0).to(tmp_device)
 
+    # mask out pixels
+    if obs_path and (obs_mask or obs_mask_w_path):
+        sample["obs"][img_key][sample["obs"][depth_key] == 0] = 0.
+    
     points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
-
+    
     def zero_points(points, colors=None, crop_min=[-1.0, -1.0, -0.2], crop_max=[1.0, 1.0, 1.0]):
         crop_min = torch.tensor(crop_min, device=points.device).view(1, 1, 3)
         crop_max = torch.tensor(crop_max, device=points.device).view(1, 1, 3)
