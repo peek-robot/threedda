@@ -5,6 +5,7 @@ import imageio
 import os
 import numpy as np
 from tqdm import trange
+import matplotlib.pyplot as plt
 
 from problem_reduction.threedda.text_embed import CLIPTextEmbedder
 from problem_reduction.threedda.data import prepare_batch
@@ -70,6 +71,9 @@ def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, 
         vlm_cache_step = np.floor(timestep / update_every_timesteps).astype(int)
         print("Querying VLM at timestep", timestep, "...")
         image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
+        
+        plt.imsave(f"vlm_image_{timestep}.png", image)
+
         vlm_cache = {
             "path_pred": path_pred,
             "mask_pred": mask_pred,
@@ -195,6 +199,14 @@ def eval_3dda(
             }
             env = RobotEnv(**env_config)
             env.set_lang_instr("pick up the blue cube")
+            
+            
+            
+            env.set_lang_instr("put blue cube on the red cube")
+            # env.set_lang_instr("put red cube on the green cube")
+
+
+
             if True:
                 visualize_pointcloud(env, data_path)
                 import IPython; IPython.embed()
@@ -240,7 +252,6 @@ def eval_3dda(
             if obs_mask:
                 obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
         elif obs_path or obs_mask:
-            # initial vlm predictions and cache
             obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask)
         
         framestack.reset()
@@ -331,6 +342,11 @@ def eval_3dda(
                         obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
 
                 elif obs_path or obs_mask:
+                    # initial vlm predictions and cache
+                    timestep=j*action_chunk_size
+                    update_every_timesteps=update_every_timesteps_vlm
+                    if not "rgb" in obs.keys() and vlm_cache_step < np.floor(timestep / update_every_timesteps).astype(int):
+                        obs["rgb"] = env.get_obs()["rgb"]
                     # update vlm predictions and cache -> only compute new path/mask predictions every 15 steps
                     obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=j*action_chunk_size, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask, vlm_cache=vlm_cache, vlm_cache_step=vlm_cache_step)
 
