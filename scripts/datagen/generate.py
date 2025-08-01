@@ -45,7 +45,6 @@ if __name__ == "__main__":
     parser.add_argument("--visual_augmentation", action="store_true")
     parser.add_argument("--drop_failures", action="store_true")
     parser.add_argument("--identifier", type=str, default=None)
-    # parser.add_argument("--outfile", type=str, default="blue_cube_10_fast_path_mask.hdf5")
     args = parser.parse_args()
 
     assert args.task == "pick_and_place" and args.num_objs > 1 or args.task == "pick"
@@ -66,10 +65,8 @@ if __name__ == "__main__":
         # CubeEnv
         "xml_path": "robot/sim/franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
-        "size": 0.0275,
+        "size": 0.025,
         "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
-        # NOTE: pick&place was
-        # "obj_pos_dist": [[0.3, -0.25, 0.03], [0.6, 0.25, 0.03]],
         "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 16, np.pi / 16]],
         "seed": 0,
         "obs_keys": [
@@ -97,7 +94,7 @@ if __name__ == "__main__":
         "calib_dict": calib_dict,
         "n_steps": 50,
         "time_steps": 0.002,
-        "reset_qpos_noise_std": 1e-2, # NOTE: pick&place was 5e-3
+        "reset_qpos_noise_std": 1e-2,
         "controller": "abs_joint",
     }
     env = CubeEnv(**env_config)
@@ -105,7 +102,7 @@ if __name__ == "__main__":
     data_config = {
         "n_episodes": args.num_samples,
         "visual_augmentation": args.visual_augmentation,
-        "action_noise_std": 5e-3, # NOTE: pick&place was 0.0
+        "action_noise_std": 0.0, # 5e-3
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
@@ -150,6 +147,7 @@ if __name__ == "__main__":
                     obj_pose=(obj_pos, obj_quat),
                     place_pose=(place_pos, place_quat),
                     mp=mp,
+                    cube_size=env_config["size"] * 2,
                 )
             elif args.task == "pick":
                 qpos_traj, gripper_traj = plan_pick_motion(

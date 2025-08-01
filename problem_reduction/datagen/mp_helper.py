@@ -78,7 +78,7 @@ def plan_pick_motion(obj_pose, mp, qpos=None, ee_pose=None):
     return qpos_traj, gripper_traj
 
 
-def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None):
+def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None, cube_size=0.06):
 
     # get object and grasp pose
     grasp_pos, grasp_quat = compute_grasp_pose(obj_pose[0], obj_pose[1])
@@ -86,7 +86,6 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
 
     # constants
     gripper_offset = 0.107
-    cube_offset = 0.06
 
     # define targets
     grasp_target = {
@@ -96,7 +95,7 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
     }
     grasp_gripper = 1
     pre_grasp_target = {
-        "ee_pos": grasp_target["ee_pos"] + torch.tensor([[0, 0, cube_offset]]).cuda(),
+        "ee_pos": grasp_target["ee_pos"] + torch.tensor([[0, 0, cube_size]]).cuda(),
         "ee_quat": grasp_target["ee_quat"],
     }
     pre_grasp_gripper = 1
@@ -104,20 +103,20 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
     place_target = {
         "ee_pos": torch.from_numpy(place_pos).float().cuda()[None]
         + torch.tensor([[0, 0, gripper_offset]]).cuda()
-        + torch.tensor([[0, 0, cube_offset]]).cuda(),
+        + torch.tensor([[0, 0, cube_size]]).cuda(),
         "ee_quat": torch.from_numpy(place_quat).float().cuda()[None],
     }
     place_gripper = 0    
     pre_place_target = {
         "ee_pos": torch.from_numpy(place_pos).float().cuda()[None]
         + torch.tensor([[0, 0, gripper_offset]]).cuda()
-        + torch.tensor([[0, 0, cube_offset]]).cuda() * 2,
+        + torch.tensor([[0, 0, cube_size]]).cuda() * 2,
         "ee_quat": torch.from_numpy(place_quat).float().cuda()[None],
     }
     pre_place_gripper = 0
     # HACK: interpolate between place and pre-grasp target + add z offset to avoid collision
     place_grasp = (place_target["ee_pos"] + pre_grasp_target["ee_pos"]) / 2
-    place_grasp[0, 2] += 0.05
+    place_grasp[0, 2] += cube_size
     inter_place_target = {
         "ee_pos": place_grasp,
         "ee_quat": grasp_target["ee_quat"],
