@@ -94,7 +94,7 @@ def get_path_from_answer(s, prompt_type="path"):
         return [lang, traj, mask]
 
 
-def add_path_2d_to_img(img, path, cmap=None, color=None):
+def add_path_2d_to_img(img, path):
     """
     Add 2D path to image.
     - img (np.ndarray): image
@@ -105,33 +105,23 @@ def add_path_2d_to_img(img, path, cmap=None, color=None):
     img_out = img.copy()
 
     path_len = len(path)
-
-    # setup color(-map)
-    if cmap is not None:
-        plt_cmap = getattr(plt.cm, cmap)
-        norm = plt.Normalize(vmin=0, vmax=path_len - 1)
-    elif color is None:
-        color = (255, 0, 0)
+    reds = np.linspace(64, 255, path_len).astype(int)
+    colors = [tuple(int(r) for r in (r_val, 0, 0)) for r_val in reds]
     
     # plot path
     for i in range(path_len - 1):
-        
-        # get color
-        if cmap is not None:
-            color = plt_cmap(norm(i))[:3]
-            color = tuple(int(c * 255) for c in color)
 
         cv2.line(
             img_out,
             (int(path[i][0]), int(path[i][1])),
             (int(path[i + 1][0]), int(path[i + 1][1])),
-            color,
+            colors[i],
             2,
         )
 
     return img_out
 
-def add_mask_2d_to_img(img, points, mask_pixels=25):
+def add_mask_2d_to_img(img, points, mask_pixels=10):
     img_zeros = np.zeros_like(img)
     for point in points:
         x, y = point.astype(int)
@@ -141,7 +131,7 @@ def add_mask_2d_to_img(img, points, mask_pixels=25):
         img_zeros[y_minus:y_plus, x_minus:x_plus] = img[y_minus:y_plus, x_minus:x_plus]
     return img_zeros
 
-def get_mask_2d(img, points, mask_pixels=25):
+def get_mask_2d(img, points, mask_pixels=10):
     img_zeros = np.zeros(img.shape[:2])
     for point in points:
         x, y = point.astype(int)
