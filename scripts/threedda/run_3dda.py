@@ -624,7 +624,7 @@ if __name__ == "__main__":
         "horizon": args.horizon,
         "history": args.history,
         "batch_size": 64,
-        "lr": 5e-4,
+        "lr": 3e-4,
         "embedding_dim": 60,
         "num_attn_heads": 6,
         "diffusion_timesteps": 100,
