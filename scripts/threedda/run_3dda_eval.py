@@ -111,7 +111,7 @@ def eval_3dda(
     open_loop_obs_key="obs",
     model_name_vlm="vila_3b_path_mask_fast",
     server_ip_vlm=None,
-    update_every_timesteps_vlm=25,
+    update_every_timesteps_vlm=32,
     real=False,
 ):
     
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     parser.add_argument("--obs_mask", action="store_true", help="Use mask observations")
     parser.add_argument("--obs_mask_w_path", action="store_true", help="Use mask observations with path")
     parser.add_argument("--server_ip_vlm", type=str, default=None)
-    parser.add_argument("--update_every_timesteps_vlm", type=int, default=25)
+    parser.add_argument("--update_every_timesteps_vlm", type=int, default=32)
     args = parser.parse_args()
 
     if args.ckpt_dir is None:
