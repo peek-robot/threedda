@@ -283,6 +283,8 @@ def eval_3dda(
                     obs_crop=model_config.obs_crop,
                     obs_crop_cube=model_config.obs_crop_cube,
                     obs_noise_std=0.0,
+                    obs_discrete_gripper=not model_config.obs_continuous_gripper,
+                    obs_no_proprio=model_config.obs_no_proprio,
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
