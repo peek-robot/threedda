@@ -134,6 +134,7 @@ def train(
                 horizon=model_config.horizon,
                 obs_noise_std=model_config.obs_noise_std,
                 obs_no_proprio=model_config.obs_no_proprio,
+                obs_discrete_gripper=not model_config.obs_continuous_gripper,
                 obs_crop=model_config.obs_crop,
                 obs_crop_cube=model_config.obs_crop_cube,
                 obs_outlier=model_config.obs_outlier,
@@ -267,6 +268,7 @@ def train(
                     history=model_config.history,
                     horizon=model_config.horizon,
                     obs_noise_std=model_config.obs_noise_std,
+                    obs_discrete_gripper=not model_config.obs_continuous_gripper,
                     obs_no_proprio=model_config.obs_no_proprio,
                     obs_crop=model_config.obs_crop,
                     obs_crop_cube=model_config.obs_crop_cube,
@@ -547,6 +549,11 @@ if __name__ == "__main__":
         help="normalize loss",
     )
     parser.add_argument(
+        "--obs_continuous_gripper",
+        action="store_true",
+        help="continuous gripper",
+    )
+    parser.add_argument(
         "--obs_no_proprio",
         action="store_true",
         help="no proprio",
@@ -605,27 +612,19 @@ if __name__ == "__main__":
 
     joint_loc_bounds = np.array(
         [
-            # [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0.0],
-            # [ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973, 0.04]
             [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973],
             [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],
         ]
     )
-    # with h5py.File(args.dataset, "r") as f:
-    #     data_grp = f["data"]
-    #     actions_min = data_grp.attrs["actions_min"][:7]
-    #     actions_max = data_grp.attrs["actions_max"][:7]
-    # joint_loc_bounds = np.stack([actions_min, actions_max], axis=0)
 
     from argparse import Namespace
-
     model_config = {
         "num_epochs": args.num_epochs,
         "eval_every_n_epochs": args.eval_every_n_epochs,
         "epoch_every_n_steps": args.epoch_every_n_steps,
         "horizon": args.horizon,
         "history": args.history,
-        "batch_size": 64,
+        "batch_size": 64, # 32,
         "lr": 3e-4,
         "embedding_dim": 60,
         "num_attn_heads": 6,
@@ -634,13 +633,14 @@ if __name__ == "__main__":
         "traj_relative": args.traj_relative,
         "joint_loc_bounds": joint_loc_bounds,
         "gripper_loc_bounds": None,
-        "loss_weights": [30, 1],
+        "loss_weights": [30, 1], # [30, 10]
         "normalize_loss": not args.normalize_loss,
         "image_size": (args.image_size, args.image_size),
         # ablations
         "fps_subsampling_factor": args.fps_subsampling_factor,
         "obs_noise_std": args.obs_noise_std,
         "obs_no_proprio": args.obs_no_proprio,
+        "obs_continuous_gripper": args.obs_continuous_gripper,
         "obs_crop": args.obs_crop,
         "obs_crop_cube": args.obs_crop_cube,
         "obs_outlier": args.obs_outlier,

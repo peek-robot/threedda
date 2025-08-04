@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, masking_ratio=0.1, device=None):
+def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, masking_ratio=0.1, device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -38,10 +38,14 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     qpos = sample["obs"]["qpos"]
     # discrete gripper state for action prediction -> BCE loss
     gripper_state_discrete = sample["obs"]["gripper_state_discrete"].float()
+    gripper_state_continuous = sample["obs"]["gripper_state_continuous"].float()
     # future actions
     gt_trajectory = torch.cat((qpos[:, history:], gripper_state_discrete[:, history:]), dim=-1)
     # past actions
-    curr_gripper = torch.cat((qpos[:, :history], gripper_state_discrete[:, :history]), dim=-1)
+    if obs_discrete_gripper:
+        curr_gripper = torch.cat((qpos[:, :history], gripper_state_discrete[:, :history]), dim=-1)
+    else:
+        curr_gripper = torch.cat((qpos[:, :history], gripper_state_continuous[:, :history]), dim=-1)
     # (optional) add noise to qpos obs
     if obs_noise_std > 0:
         curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape).to(curr_gripper.device)
