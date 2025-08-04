@@ -361,6 +361,7 @@ def train(
                 obs_gt=model_config.obs_gt,
                 server_ip_vlm=server_ip_vlm,
                 model_name_vlm=model_name_vlm,
+                update_every_timesteps_vlm=32,
             )
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
