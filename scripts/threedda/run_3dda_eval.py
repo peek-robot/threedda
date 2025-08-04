@@ -417,7 +417,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--action_chunk_size", type=int, default=8)
     parser.add_argument("--n_rollouts", type=int, default=1)
-    parser.add_argument("--n_steps", type=int, default=64)
+    parser.add_argument("--n_steps", type=int, default=1000)
     parser.add_argument("--obs_path", action="store_true", help="Use path observations")
     parser.add_argument("--obs_mask", action="store_true", help="Use mask observations")
     parser.add_argument("--obs_mask_w_path", action="store_true", help="Use mask observations with path")
