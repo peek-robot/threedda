@@ -192,7 +192,7 @@ def eval_3dda(
                 "address": "172.16.0.1",
                 "port": 5050,
                 "camera_index": 0,
-                "obs_keys": ["lang_instr", "qpos", "qpos_normalized", "gripper_state_discrete", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
+                "obs_keys": ["lang_instr", "qpos", "qpos_normalized", "gripper_state_discrete", "gripper_state_continuous", "rgb", "depth", "camera_intrinsic", "camera_extrinsic"],
                 "calib_dict": calib_dict,
                 "foundation_stereo": True,
                 "img_resize": (128, 128),
@@ -205,11 +205,9 @@ def eval_3dda(
             env.set_lang_instr("put blue cube on the red cube")
             # env.set_lang_instr("put red cube on the green cube")
 
-
-
-            if True:
-                visualize_pointcloud(env, data_path)
-                import IPython; IPython.embed()
+            # if True:
+            #     visualize_pointcloud(env, data_path)
+            #     import IPython; IPython.embed()
         else:
             env = CubeEnv(**env_config)
             env.seed(seed + i)
@@ -419,17 +417,18 @@ if __name__ == "__main__":
     )
     parser.add_argument("--action_chunk_size", type=int, default=8)
     parser.add_argument("--n_rollouts", type=int, default=1)
-    parser.add_argument("--n_steps", type=int, default=64)
+    parser.add_argument("--n_steps", type=int, default=1000)
     parser.add_argument("--obs_path", action="store_true", help="Use path observations")
     parser.add_argument("--obs_mask", action="store_true", help="Use mask observations")
     parser.add_argument("--obs_mask_w_path", action="store_true", help="Use mask observations with path")
     parser.add_argument("--server_ip_vlm", type=str, default=None)
     parser.add_argument("--update_every_timesteps_vlm", type=int, default=32)
+    parser.add_argument("--results_dir", type=str, default="results")
     args = parser.parse_args()
 
     if args.ckpt_dir is None:
         ckpt_path = (
-            f"/home/marius/Projects/problem_reduction/results/{args.name}/{args.ckpt}.pth"
+            f"/home/marius/Projects/problem_reduction/{args.results_dir}/{args.name}/{args.ckpt}.pth"
         )
     else:
         ckpt_path = os.path.join(args.ckpt_dir, args.ckpt + ".pth")
