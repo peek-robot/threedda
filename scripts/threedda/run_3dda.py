@@ -68,6 +68,7 @@ def get_dataloaders_from_mimic(config):
         shuffle=(train_sampler is None),
         num_workers=config.train.num_data_workers,
         drop_last=True,
+        pin_memory=True,
     )
 
     if config.experiment.validate:
@@ -371,7 +372,7 @@ def train(
                     {
                         "epoch": epoch,
                         f"eval/{eval_mode}/{instruction}_{i}": wandb.Video(
-                            video.transpose(0, 3, 1, 2), fps=10, format="gif"
+                            video.transpose(0, 3, 1, 2), fps=10, format="mp4"
                         ),
                     }
                 )
