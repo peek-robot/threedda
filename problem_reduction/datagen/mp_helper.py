@@ -122,6 +122,11 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
         "ee_quat": grasp_target["ee_quat"],
     }
     inter_place_gripper = 0
+    post_place_target = {
+        "ee_pos": place_target["ee_pos"] + torch.tensor([[0, 0, cube_size]]).cuda(),
+        "ee_quat": grasp_target["ee_quat"],
+    }
+    post_place_gripper = 1
 
     # define start
     if ee_pose is not None:
@@ -136,8 +141,8 @@ def plan_pick_and_place_motion(obj_pose, place_pose, mp, qpos=None, ee_pose=None
     qpos_traj = []
     gripper_traj = []
     for gripper, target in zip(
-        [pre_grasp_gripper, grasp_gripper, inter_place_gripper, pre_place_gripper, place_gripper],
-        [pre_grasp_target, grasp_target, inter_place_target, pre_place_target, place_target],
+        [pre_grasp_gripper, grasp_gripper, inter_place_gripper, pre_place_gripper, place_gripper, post_place_gripper],
+        [pre_grasp_target, grasp_target, inter_place_target, pre_place_target, place_target, post_place_target],
     ):
         traj = mp.plan_motion(start, target)
         qpos_traj.append(traj.position.cpu().numpy())

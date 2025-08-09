@@ -66,7 +66,8 @@ if __name__ == "__main__":
         "xml_path": "robot/sim/franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.025,
-        "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
+        # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
+        "obj_pos_dist": [[0.25, -0.3, 0.03], [0.65, 0.3, 0.03]],
         "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 16, np.pi / 16]],
         "seed": 0,
         "obs_keys": [
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     data_config = {
         "n_episodes": args.num_samples,
         "visual_augmentation": args.visual_augmentation,
-        "action_noise_std": 0.0, # 5e-3
+        "action_noise_std": 5e-3, # 2e-3, # 0.0, # 5e-3
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
