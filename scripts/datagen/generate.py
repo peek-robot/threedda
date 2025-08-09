@@ -67,8 +67,8 @@ if __name__ == "__main__":
         "num_objs": args.num_objs,
         "size": 0.025,
         # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
-        "obj_pos_dist": [[0.25, -0.3, 0.03], [0.65, 0.3, 0.03]],
-        "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 16, np.pi / 16]],
+        "obj_pos_dist": [[0.25, -0.25, 0.03], [0.65, 0.25, 0.03]],
+        "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 8, np.pi / 8]],
         "seed": 0,
         "obs_keys": [
             "lang_instr",
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         "calib_dict": calib_dict,
         "n_steps": 50,
         "time_steps": 0.002,
-        "reset_qpos_noise_std": 1e-2,
+        "reset_qpos_noise_std": 2e-2,
         "controller": "abs_joint",
     }
     env = CubeEnv(**env_config)
@@ -104,9 +104,16 @@ if __name__ == "__main__":
         "n_episodes": args.num_samples,
         "visual_augmentation": args.visual_augmentation,
         "action_noise_std": 5e-3, # 2e-3, # 0.0, # 5e-3
+        "min_velocity": 0.05,
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
+
+    # hardcode reset qpos using ee space
+    reset_qpos = mp.compute_ik(torch.tensor([[0.4, 0.0, 0.3]], device='cuda:0'), torch.tensor([[ 0., 1., 0., 0.]], device='cuda:0'))
+    reset_qpos = reset_qpos.cpu().numpy()[0]
+    env.reset_qpos = reset_qpos
+
 
     data_collector = DataCollector(
         env,
@@ -167,7 +174,7 @@ if __name__ == "__main__":
         # subsample motion to have minimum velocity
         qpos_traj = np.concatenate(qpos_traj)
         gripper_traj = np.concatenate(gripper_traj)
-        indices = subsample_min_velocity(qpos_traj, 0.05, req_indices=req_indices)
+        indices = subsample_min_velocity(qpos_traj, data_config["min_velocity"], req_indices=req_indices)
 
         # execute motion
         for qpos, gripper in zip(qpos_traj[indices], gripper_traj[indices]):

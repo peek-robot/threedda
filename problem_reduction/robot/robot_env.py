@@ -65,6 +65,12 @@ class RobotEnv:
         2.05753043,  0.88281583
         ])
 
+        # new -> much closer
+        self.reset_qpos = np.array([
+            -0.15617673, -0.22419783,  0.16372769, -2.70149,     0.0589712,   2.4793503,
+            0.7423959
+        ])
+
         self.gripper_state = 1.0
         self.reset_qpos_noise_std = reset_qpos_noise_std
 
@@ -377,9 +383,9 @@ class RobotEnv:
         # self.set_camera_intrinsic(self.camera_name, intrinsic[0, 0], intrinsic[1, 1], intrinsic[0, 2], intrinsic[1, 2], intrinsic[2, 2])
         # noise camera pose
         camera_extrinsic = self.get_camera_extrinsic(mujoco_format=True)
-        scale = 1e-2
+        scale = 2e-2 # 1e-2
         pos_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
-        scale = 1e-2
+        scale = 2e-2 # 1e-2
         ori_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
         camera_extrinsic[:3, 3] += pos_noise
         camera_extrinsic[:3, :3] = R.from_euler("xyz", ori_noise, degrees=False).as_matrix() @ camera_extrinsic[:3, :3]
