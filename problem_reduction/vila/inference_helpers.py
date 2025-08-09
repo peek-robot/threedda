@@ -22,6 +22,7 @@ from problem_reduction.vila.encode import scale_path
 from problem_reduction.vila.decode import (
     get_path_from_answer,
     add_mask_2d_to_img,
+    add_path_2d_to_img,
     get_mask_2d,
 )
 
@@ -57,52 +58,52 @@ def center_crop_and_resize(
     return cropped.resize((resize_size, resize_size), Image.LANCZOS)
 
 
-def add_path_2d_to_img(
-    image, points, line_size=1, circle_size=0, plot_lines=True, color="red"
-):
-    img_out = image.copy()
+# def add_path_2d_to_img(
+#     image, points, line_size=1, circle_size=0, plot_lines=True, color="red"
+# ):
+#     img_out = image.copy()
 
-    if np.all(points <= 1):
-        points = points * image.shape[1]
+#     if np.all(points <= 1):
+#         points = points * image.shape[1]
 
-    points = points.astype(int)
-    path_len = len(points)
+#     points = points.astype(int)
+#     path_len = len(points)
 
-    # Generate gradient from dark red to bright red
-    if color == "red":
-        color_choice = np.linspace(25, 255, path_len).astype(int)
-        colors = [tuple(int(r) for r in (r_val, 0, 0)) for r_val in color_choice]
-    # Generate gradient from dark blue to bright blue
-    elif color == "blue":
-        color_choice = np.linspace(25, 255, path_len).astype(int)
-        colors = [tuple(int(r) for r in (0, 0, r_val)) for r_val in color_choice]
+#     # Generate gradient from dark red to bright red
+#     if color == "red":
+#         color_choice = np.linspace(25, 255, path_len).astype(int)
+#         colors = [tuple(int(r) for r in (r_val, 0, 0)) for r_val in color_choice]
+#     # Generate gradient from dark blue to bright blue
+#     elif color == "blue":
+#         color_choice = np.linspace(25, 255, path_len).astype(int)
+#         colors = [tuple(int(r) for r in (0, 0, r_val)) for r_val in color_choice]
 
-    for i in range(path_len - 1):
-        color = colors[i]
-        if plot_lines:
-            cv2.line(img_out, tuple(points[i]), tuple(points[i + 1]), color, line_size)
-        if circle_size > 0:
-            cv2.circle(
-                img_out,
-                tuple(points[i]),
-                max(1, circle_size),
-                color,
-                -1,
-                lineType=cv2.LINE_AA,
-            )
+#     for i in range(path_len - 1):
+#         color = colors[i]
+#         if plot_lines:
+#             cv2.line(img_out, tuple(points[i]), tuple(points[i + 1]), color, line_size)
+#         if circle_size > 0:
+#             cv2.circle(
+#                 img_out,
+#                 tuple(points[i]),
+#                 max(1, circle_size),
+#                 color,
+#                 -1,
+#                 lineType=cv2.LINE_AA,
+#             )
 
-    # Draw last point
-    if circle_size > 0:
-        cv2.circle(
-            img_out,
-            tuple(points[-1]),
-            max(1, circle_size),
-            colors[-1],
-            -1,
-            lineType=cv2.LINE_AA,
-        )
+#     # Draw last point
+#     if circle_size > 0:
+#         cv2.circle(
+#             img_out,
+#             tuple(points[-1]),
+#             max(1, circle_size),
+#             colors[-1],
+#             -1,
+#             lineType=cv2.LINE_AA,
+#         )
 
-    return img_out
+#     return img_out
 
 try:
     from llava.mm_utils import (
@@ -331,15 +332,12 @@ def add_answer_to_img(img, answer, prompt_type, color="red", line_size=3, add_ma
             path, min_in=min_out, max_in=max_out, min_out=min_in, max_out=max_in
         )
 
-    mask_pixels = int(h * 0.15)
     if "mask" in prompt_type and scaled_mask is not None and add_mask:
-        img = add_mask_2d_to_img(img, scaled_mask, mask_pixels=mask_pixels)
+        img = add_mask_2d_to_img(img, scaled_mask, mask_pixels=10)
     # mask = get_mask_2d(img, scaled_mask, mask_pixels=mask_pixels)
 
     if "path" in prompt_type and scaled_path is not None:
-        img = add_path_2d_to_img(
-            img, scaled_path, line_size=line_size, circle_size=0, plot_lines=True, color=color
-        )
+        img = add_path_2d_to_img(img, scaled_path)
 
     return img, path, mask
 

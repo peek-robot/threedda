@@ -38,7 +38,8 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     qpos = sample["obs"]["qpos"]
     # discrete gripper state for action prediction -> BCE loss
     gripper_state_discrete = sample["obs"]["gripper_state_discrete"].float()
-    gripper_state_continuous = sample["obs"]["gripper_state_continuous"].float()
+    # continuous gripper state for observations -> normalize 0-1
+    gripper_state_continuous = sample["obs"]["gripper_state_continuous"].float() / 0.04
     # future actions
     gt_trajectory = torch.cat((qpos[:, history:], gripper_state_discrete[:, history:]), dim=-1)
     # past actions
