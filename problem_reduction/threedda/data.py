@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, device=None):
+def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, mask_pixels=10, device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -61,19 +61,6 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     tmp_device = sample["obs"][depth_key].device
     B, H, W = sample["obs"][depth_key].shape
 
-    # store path as 2d image
-    if obs_path:
-        path_rgbs = []
-        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
-            # unpad path
-            m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
-            path_unpad = path[m]
-            path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
-            # add path to rgb
-            path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
-            path_rgbs.append(torch.from_numpy(path_rgb))
-        sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
-
     # store mask as 2d depth
     if obs_mask:
         mask_depths = []
@@ -83,7 +70,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             mask_unpad = mask[m]
             mask_unpad = scale_path(mask_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # add mask to depth
-            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=10)
+            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=mask_pixels)
             mask_depths.append(torch.from_numpy(mask_depth))
         sample["obs"][depth_key] = torch.stack(mask_depths, dim=0).to(tmp_device)
 
@@ -102,13 +89,32 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             # combine mask and path
             mask_w_path_unpad = torch.cat((mask_unpad, path_unpad), dim=0)
             # add mask w/ path to depth
-            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_w_path_unpad.cpu().numpy(), mask_pixels=10)
+            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_w_path_unpad.cpu().numpy(), mask_pixels=mask_pixels)
             mask_depths.append(torch.from_numpy(mask_depth))
         sample["obs"][depth_key] = torch.stack(mask_depths, dim=0).to(tmp_device)
 
     # mask out pixels
     if obs_path and (obs_mask or obs_mask_w_path):
         sample["obs"][img_key][sample["obs"][depth_key] == 0] = 0.
+    
+    # store path as 2d image
+    # NOTE: do this after RGB is masked out!
+    if obs_path:
+        path_rgbs = []
+        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
+            # unpad path
+            m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
+            path_unpad = path[m]
+            path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
+            # add path to rgb
+            path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
+            path_rgbs.append(torch.from_numpy(path_rgb))
+        sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
+
+    # import matplotlib.pyplot as plt
+    # plt.imsave("mask_depth_rgb.png", sample["obs"][img_key][0].cpu().numpy())
+    # plt.imsave("mask_depth_depth.png", sample["obs"][depth_key][0].cpu().numpy())
+    # import IPython; IPython.embed()
     
     points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
