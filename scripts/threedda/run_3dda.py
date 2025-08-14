@@ -67,6 +67,7 @@ def get_dataloaders_from_mimic(config):
         batch_size=config.train.batch_size,
         shuffle=(train_sampler is None),
         num_workers=config.train.num_data_workers,
+        persistent_workers=config.train.num_data_workers > 0,
         drop_last=True,
         pin_memory=True,
     )
@@ -104,6 +105,7 @@ def train(
     output_dir=None,
     server_ip_vlm=None,
     model_name_vlm=None,
+    update_every_timesteps_vlm=32,
 ):
 
     criterion = TrajectoryCriterion()
@@ -142,6 +144,7 @@ def train(
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 obs_mask_w_path=model_config.obs_mask_w_path,
+                mask_pixels=model_config.mask_pixels,
                 obs_gt=model_config.obs_gt,
                 device=device,
             )
@@ -150,34 +153,36 @@ def train(
             loss_dict = model.forward(**batch_prepared, run_inference=False)
             loss_dict["total_loss"].backward()
             optimizer.step()
+            
             for k, v in loss_dict.items():
                 if k not in train_losses:
                     train_losses[k] = []
                 train_losses[k].append(v.item())
 
         # compute metrics
-        model.eval()
-        with torch.no_grad():
+        if epoch % 10 == 0 and epoch > 0:
+            model.eval()
+            with torch.no_grad():
 
-            acts = model.forward(**batch_prepared, run_inference=True)
+                acts = model.forward(**batch_prepared, run_inference=True)
 
-            if model_config.action_space == "joint":
-                metrics = criterion.compute_metrics_joint(
-                    acts,
-                    batch_prepared["gt_trajectory"],
-                    batch_prepared["trajectory_mask"],
-                )[0]
-            else:
-                metrics = criterion.compute_metrics(
-                    acts,
-                    batch_prepared["gt_trajectory"],
-                    batch_prepared["trajectory_mask"],
-                )[0]
+                if model_config.action_space == "joint":
+                    metrics = criterion.compute_metrics_joint(
+                        acts,
+                        batch_prepared["gt_trajectory"],
+                        batch_prepared["trajectory_mask"],
+                    )[0]
+                else:
+                    metrics = criterion.compute_metrics(
+                        acts,
+                        batch_prepared["gt_trajectory"],
+                        batch_prepared["trajectory_mask"],
+                    )[0]
 
-            for k, v in metrics.items():
-                if k not in train_losses:
-                    train_losses[k] = []
-                train_losses[k].append(v.item())
+                for k, v in metrics.items():
+                    if k not in train_losses:
+                        train_losses[k] = []
+                    train_losses[k].append(v.item())
 
         # logging
         wandb.log(
@@ -186,9 +191,10 @@ def train(
                 **{f"train/{k}": sum(v) / len(v) for k, v in train_losses.items()},
             }
         )
-        act_dim = acts.shape[-1]
 
-        if epoch % 25 == 0 and epoch > 0:
+        # plot actions
+        if epoch > 500 and epoch % model_config.eval_every_n_epochs == 0  and epoch > 0:
+            act_dim = acts.shape[-1]
             plot_actions_and_log_wandb(
                 acts.cpu().numpy().reshape(-1, act_dim),
                 batch_prepared["gt_trajectory"].cpu().numpy().reshape(-1, act_dim),
@@ -196,6 +202,7 @@ def train(
                 epoch,
             )
 
+        # plot observations
         if epoch == 0:
 
             # log clip features
@@ -247,7 +254,8 @@ def train(
             output_dir,
         )
 
-        if epoch % 25 == 0 and epoch > 0:
+        # compute eval metrics
+        if epoch > 500 and model_config.eval_every_n_epochs == 0 and epoch > 0:
             test_losses = {
                 "total_loss": [],
             }
@@ -277,6 +285,7 @@ def train(
                     obs_path=model_config.obs_path,
                     obs_mask=model_config.obs_mask,
                     obs_mask_w_path=model_config.obs_mask_w_path,
+                    mask_pixels=model_config.mask_pixels,
                     obs_gt=model_config.obs_gt,
                     device=device,
                 )
@@ -332,8 +341,8 @@ def train(
             )
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
-        # if epoch > 200 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
-        if epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        # compute eval success
+        if epoch > 500 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
             
             eval_mode = "closed_loop"
             
@@ -359,10 +368,11 @@ def train(
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 obs_mask_w_path=model_config.obs_mask_w_path,
+                mask_pixels=model_config.mask_pixels,
                 obs_gt=model_config.obs_gt,
                 server_ip_vlm=server_ip_vlm,
                 model_name_vlm=model_name_vlm,
-                update_every_timesteps_vlm=32,
+                update_every_timesteps_vlm=update_every_timesteps_vlm,
             )
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
@@ -587,9 +597,21 @@ if __name__ == "__main__":
         help="server ip vlm",
     )
     parser.add_argument(
+        "--update_every_timesteps_vlm",
+        type=int,
+        default=32,
+        help="update every timesteps vlm",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="debug",
+    )
+    parser.add_argument(
+        "--mask_pixels",
+        type=int,
+        default=10,
+        help="mask pixels",
     )
     # parse arguments
     args = parser.parse_args()
@@ -627,8 +649,8 @@ if __name__ == "__main__":
         "history": args.history,
         "batch_size": 64, # 32,
         "lr": 3e-4,
-        "embedding_dim": 60,
-        "num_attn_heads": 6,
+        "embedding_dim": 60, # -> maybe try 32 | 60
+        "num_attn_heads": 6, # -> maybe try 4 | 6
         "diffusion_timesteps": 100,
         "action_space": args.action_space,  # "joint" or "abs_ee"
         "traj_relative": args.traj_relative,
@@ -638,7 +660,7 @@ if __name__ == "__main__":
         "normalize_loss": not args.normalize_loss,
         "image_size": (args.image_size, args.image_size),
         # ablations
-        "fps_subsampling_factor": args.fps_subsampling_factor,
+        "fps_subsampling_factor": args.fps_subsampling_factor, # -> maybe sample less
         "obs_noise_std": args.obs_noise_std,
         "obs_no_proprio": args.obs_no_proprio,
         "obs_continuous_gripper": args.obs_continuous_gripper,
@@ -648,6 +670,7 @@ if __name__ == "__main__":
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
         "obs_mask_w_path": args.obs_mask_w_path,
+        "mask_pixels": args.mask_pixels,
         "obs_gt": args.obs_gt,
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
@@ -683,10 +706,11 @@ if __name__ == "__main__":
             print("dataset already exists in /tmp/")
         args.dataset = tmp_dataset
 
+    validate = True
     ext_cfg = {
         "algo_name": "bc",
         "experiment": {
-            "validate": True,
+            "validate": validate,
         },
         "observation": {
             "modalities": {
@@ -703,13 +727,13 @@ if __name__ == "__main__":
         "train": {
             "data": args.dataset,
             "output_dir": "../bc_transformer_trained_models",
-            "num_data_workers": 0,
+            "num_data_workers": 4,
             "hdf5_cache_mode": None,
             "hdf5_use_swmr": True,
             "hdf5_load_next_obs": False,
             "hdf5_normalize_obs": False,
-            "hdf5_filter_key": "train",
-            "hdf5_validation_filter_key": "valid",
+            "hdf5_filter_key": "train" if validate else None,
+            "hdf5_validation_filter_key": "valid" if validate else None,
             "seq_length": model_config.horizon + 1,
             "pad_seq_length": True,
             "frame_stack": model_config.history,
@@ -781,4 +805,5 @@ if __name__ == "__main__":
         output_dir=output_dir,
         model_name_vlm=args.model_name_vlm,
         server_ip_vlm=args.server_ip_vlm,
+        update_every_timesteps_vlm=args.update_every_timesteps_vlm,
     )
