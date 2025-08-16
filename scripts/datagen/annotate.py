@@ -53,6 +53,10 @@ if __name__ == "__main__":
 
     for i, dk in tqdm(enumerate(file.keys())):
 
+        # if "path_vlm" in file[dk]["obs"].keys() and "mask_vlm" in file[dk]["obs"].keys():
+        #     if not np.all(file[dk]["obs"]["path_vlm"][:] == 0) and not np.all(file[dk]["obs"]["mask_vlm"][:] == 0):
+        #         continue
+
         # if "path_vlm" in file[dk]["obs"] and "mask_vlm" in file[dk]["obs"]:
         #     continue
 
@@ -64,6 +68,8 @@ if __name__ == "__main__":
         # split_size = -1
         # for split_idx in range(1):
         split_size = args.split_size
+        if split_size == -1:
+            split_size = np.random.randint(8, 32)
         for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
 
             # inference

@@ -54,9 +54,10 @@ if __name__ == "__main__":
 
     for i, dk in tqdm(enumerate(file.keys())):
 
-        if "path_vlm" in file[dk]["obs"].keys() and "mask_vlm" in file[dk]["obs"].keys():
-            print("found", dk)
-            continue
+        # if "path_vlm" in file[dk]["obs"].keys() and "mask_vlm" in file[dk]["obs"].keys():
+        #     print("found", dk)
+        #     continue
+        
         #     if not np.all(file[dk]["obs"]["path_vlm"][:] == 0) and not np.all(file[dk]["obs"]["mask_vlm"][:] == 0):
         #         continue
 

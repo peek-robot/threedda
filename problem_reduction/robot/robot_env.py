@@ -383,9 +383,9 @@ class RobotEnv:
         # self.set_camera_intrinsic(self.camera_name, intrinsic[0, 0], intrinsic[1, 1], intrinsic[0, 2], intrinsic[1, 2], intrinsic[2, 2])
         # noise camera pose
         camera_extrinsic = self.get_camera_extrinsic(mujoco_format=True)
-        scale = 2e-2 # 1e-2
+        scale = 1e-2
         pos_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
-        scale = 2e-2 # 1e-2
+        scale = 1e-2
         ori_noise = np.random.normal(loc=0.0, scale=scale, size=(3,))
         camera_extrinsic[:3, 3] += pos_noise
         camera_extrinsic[:3, :3] = R.from_euler("xyz", ori_noise, degrees=False).as_matrix() @ camera_extrinsic[:3, :3]
