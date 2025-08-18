@@ -94,9 +94,9 @@ if __name__ == "__main__":
         "img_resize": [128, 128],
         "calib_dict": calib_dict,
         "n_steps": 50,
-        "time_steps": 0.002,
+        "dt": 0.002,
         "reset_qpos_noise_std": 2e-2,
-        "controller": "abs_joint",
+        "controller": "abs_ee", # "abs_joint",
     }
     env = CubeEnv(**env_config)
 
@@ -107,13 +107,13 @@ if __name__ == "__main__":
         "min_velocity": 0.06,
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
-    mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
+    mp = CuroboWrapper(interpolation_dt=env.n_steps * env.dt)
 
-    # hardcode reset qpos using ee space
-    reset_qpos = mp.compute_ik(torch.tensor([[0.4, 0.0, 0.3]], device='cuda:0'), torch.tensor([[ 0., 1., 0., 0.]], device='cuda:0'))
-    reset_qpos = reset_qpos.cpu().numpy()[0]
-    env.reset_qpos = reset_qpos
-
+    # NOTE :hard code reset qpos using ee space
+    # env.reset()
+    # reset_qpos_curobo = mp.compute_ik(torch.tensor([[0.4, 0.0, 0.3]], device='cuda:0'), torch.tensor([[ 0., 1., 0., 0.]], device='cuda:0'))
+    # reset_qpos_mink = env.mink.compute_ik(position=np.array([0.4, 0.0, 0.3]), quaternion=np.array([0., 1., 0., 0.]), q_init=env.get_qpos())
+    # env.reset_qpos = reset_qpos_mink
 
     data_collector = DataCollector(
         env,
@@ -145,6 +145,7 @@ if __name__ == "__main__":
         obj_pos, obj_quat = obj_poses[:3], obj_poses[3:7]
         qpos = env.get_qpos()
         prev_qpos = env.get_qpos()
+        prev_ee_pose = env.get_ee_pose()
 
         # plan motion
         try:
@@ -183,8 +184,12 @@ if __name__ == "__main__":
             )
             if env_config["controller"] == "rel_joint":
                 act = np.concatenate((qpos - prev_qpos + noise, [gripper]))
-            else:
+            elif env_config["controller"] == "abs_joint":
                 act = np.concatenate((qpos + noise, [gripper]))
+            elif env_config["controller"] == "abs_ee":
+                act = np.concatenate((env.mink.compute_fk(qpos), [gripper]))
+            # elif env_config["controller"] == "rel_ee":
+            #     act = np.concatenate((env.mink.compute_fk(qpos) + action[:3], [gripper]))
             data_collector.step(act)
             prev_qpos = env.get_qpos()
 
