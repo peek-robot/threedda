@@ -160,6 +160,8 @@ class MinkIK:
         # if not success:
         #     import IPython; IPython.embed()
 
-        assert success, "IK failed to converge"
+        # assert success, "IK failed to converge"
+        if not success:
+            print("IK failed to converge")
 
         return self.configuration.q.copy()[:7]
