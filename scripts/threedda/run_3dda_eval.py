@@ -291,6 +291,7 @@ def eval_3dda(
                     obs_outlier=False, # real,
                     obs_gt=obs_gt,
                     device=device,
+                    action_space=model_config.action_space,
                 )
 
                 if obs_path:

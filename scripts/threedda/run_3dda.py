@@ -146,6 +146,7 @@ def train(
                 obs_mask_w_path=model_config.obs_mask_w_path,
                 mask_pixels=model_config.mask_pixels,
                 obs_gt=model_config.obs_gt,
+                action_space=model_config.action_space,
                 device=device,
             )
 
@@ -255,7 +256,7 @@ def train(
         )
 
         # compute eval metrics
-        if epoch > 500 and model_config.eval_every_n_epochs == 0 and epoch > 0:
+        if epoch > 300 and model_config.eval_every_n_epochs == 0 and epoch > 0:
             test_losses = {
                 "total_loss": [],
             }
@@ -287,6 +288,7 @@ def train(
                     obs_mask_w_path=model_config.obs_mask_w_path,
                     mask_pixels=model_config.mask_pixels,
                     obs_gt=model_config.obs_gt,
+                    action_space=model_config.action_space,
                     device=device,
                 )
 
@@ -679,8 +681,8 @@ if __name__ == "__main__":
     model_config = Namespace(**model_config)
 
     low_dim_keys = [
-        "qpos",
-        "qpos_normalized",
+        "ee_pose" if args.action_space == "abs_ee" else "qpos",
+        # "qpos_normalized",
         "gripper_state_continuous",
         "gripper_state_discrete",
         "lang_instr",
@@ -715,7 +717,6 @@ if __name__ == "__main__":
         "observation": {
             "modalities": {
                 "obs": {
-                    # "low_dim": ["qpos", "gripper_state", "path"],
                     "low_dim": low_dim_keys,
                     "rgb": ["rgb"],
                     "depth": [],
@@ -738,7 +739,7 @@ if __name__ == "__main__":
             "pad_seq_length": True,
             "frame_stack": model_config.history,
             "pad_frame_stack": True,
-            "dataset_keys": ["actions"],
+            "dataset_keys": [],
             "goal_mode": None,
             "cuda": True,
             "batch_size": model_config.batch_size,

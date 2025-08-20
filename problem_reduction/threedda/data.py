@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, mask_pixels=10, device=None):
+def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, mask_pixels=10, action_space="joint", device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -35,19 +35,24 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # instruction: (B, max_instruction_length, 512)
     # curr_gripper: (B, nhist, 3+4+X)
 
-    qpos = sample["obs"]["qpos"]
     # discrete gripper state for action prediction -> BCE loss
     gripper_state_discrete = sample["obs"]["gripper_state_discrete"].float()
     # continuous gripper state for observations -> normalize 0-1
     gripper_state_continuous = sample["obs"]["gripper_state_continuous"].float() / 0.04
+
+    if action_space == "joint":
+        act = sample["obs"]["qpos"]
+    elif action_space == "abs_ee":
+        act = sample["obs"]["ee_pose"]
+
     # future actions
-    gt_trajectory = torch.cat((qpos[:, history:], gripper_state_discrete[:, history:]), dim=-1)
+    gt_trajectory = torch.cat((act[:, history:], gripper_state_discrete[:, history:]), dim=-1)
     # past actions
     if obs_discrete_gripper:
-        curr_gripper = torch.cat((qpos[:, :history], gripper_state_discrete[:, :history]), dim=-1)
+        curr_gripper = torch.cat((act[:, :history], gripper_state_discrete[:, :history]), dim=-1)
     else:
-        curr_gripper = torch.cat((qpos[:, :history], gripper_state_continuous[:, :history]), dim=-1)
-    # (optional) add noise to qpos obs
+        curr_gripper = torch.cat((act[:, :history], gripper_state_continuous[:, :history]), dim=-1)
+    # (optional) add noise to ee_pose/qpos obs
     if obs_noise_std > 0:
         curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape).to(curr_gripper.device)
     if obs_no_proprio:
@@ -134,6 +139,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     
     # WARNING: zero_points with min < -1. will also crop the mask predictions from the colors/rgb!
     if obs_crop:
+        raise NotImplementedError("obs_crop not supported")
 
         # # no table surface
         # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
@@ -145,6 +151,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
         points, colors = zero_points(points, colors, crop_min=[0., -0.3, -0.1], crop_max=[0.7, 0.3, 0.8])
     
     if obs_crop_cube:
+        raise NotImplementedError("obs_crop not supported")
         points, colors = zero_points(points, colors, crop_min=[0.2, -0.3, 0.02], crop_max=[0.7, 0.3, 0.3])
     
     if obs_outlier:
