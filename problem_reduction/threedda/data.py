@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, mask_pixels=10, action_space="joint", device=None):
+def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_path_mask_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, mask_pixels=10, action_space="joint", device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -73,6 +73,8 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
+            mask_unpad = mask_unpad + torch.normal(0, obs_path_mask_noise_std, mask_unpad.shape).to(mask_unpad.device)
+            mask_unpad = torch.clamp(mask_unpad, 0., 1.)
             mask_unpad = scale_path(mask_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # add mask to depth
             mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=mask_pixels)
@@ -86,10 +88,14 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
+            mask_unpad = mask_unpad + torch.normal(0, obs_path_mask_noise_std, mask_unpad.shape).to(mask_unpad.device)
+            mask_unpad = torch.clamp(mask_unpad, 0., 1.)
             mask_unpad = scale_path(mask_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
+            path_unpad = path_unpad + torch.normal(0, obs_path_mask_noise_std, path_unpad.shape).to(path_unpad.device)
+            path_unpad = torch.clamp(path_unpad, 0., 1.)
             path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # combine mask and path
             mask_w_path_unpad = torch.cat((mask_unpad, path_unpad), dim=0)
@@ -110,6 +116,8 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
+            path_unpad = path_unpad + torch.normal(0, obs_path_mask_noise_std, path_unpad.shape).to(path_unpad.device)
+            path_unpad = torch.clamp(path_unpad, 0., 1.)
             path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # add path to rgb
             path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())

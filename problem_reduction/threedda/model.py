@@ -107,7 +107,7 @@ def get_model(da_config, device="cpu"):
             nhist=da_config.history,
             relative=False,
             lang_enhanced=False,
-            loss_weights=[30., 10., 1.]
+            loss_weights=da_config.loss_weights, # [30., 10., 1.]
         )
     elif da_config.action_space == "joint":
         model = DiffuserJointer(

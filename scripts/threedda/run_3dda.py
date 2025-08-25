@@ -136,6 +136,7 @@ def train(
                 history=model_config.history,
                 horizon=model_config.horizon,
                 obs_noise_std=model_config.obs_noise_std,
+                obs_path_mask_noise_std=model_config.obs_path_mask_noise_std,
                 obs_no_proprio=model_config.obs_no_proprio,
                 obs_discrete_gripper=not model_config.obs_continuous_gripper,
                 obs_crop=model_config.obs_crop,
@@ -277,7 +278,8 @@ def train(
                     batch,
                     history=model_config.history,
                     horizon=model_config.horizon,
-                    obs_noise_std=model_config.obs_noise_std,
+                    obs_noise_std=0.0, # model_config.obs_noise_std,
+                    obs_path_mask_noise_std=0.0, # model_config.obs_path_mask_noise_std,
                     obs_discrete_gripper=not model_config.obs_continuous_gripper,
                     obs_no_proprio=model_config.obs_no_proprio,
                     obs_crop=model_config.obs_crop,
@@ -529,6 +531,12 @@ if __name__ == "__main__":
         help="noise std",
     )
     parser.add_argument(
+        "--obs_path_mask_noise_std",
+        type=float,
+        default=0.0,
+        help="noise std",
+    )
+    parser.add_argument(
         "--fps_subsampling_factor",
         type=int,
         default=5,
@@ -615,6 +623,13 @@ if __name__ == "__main__":
         default=10,
         help="mask pixels",
     )
+    parser.add_argument(
+        "--loss_weights",
+        type=float,
+        nargs="+",
+        default=[30, 1],
+        help="loss weights",
+    )
     # parse arguments
     args = parser.parse_args()
 
@@ -658,12 +673,13 @@ if __name__ == "__main__":
         "traj_relative": args.traj_relative,
         "joint_loc_bounds": joint_loc_bounds,
         "gripper_loc_bounds": None,
-        "loss_weights": [30, 1], # [30, 10]
+        "loss_weights": args.loss_weights, # [30, 10]
         "normalize_loss": not args.normalize_loss,
         "image_size": (args.image_size, args.image_size),
         # ablations
         "fps_subsampling_factor": args.fps_subsampling_factor, # -> maybe sample less
         "obs_noise_std": args.obs_noise_std,
+        "obs_path_mask_noise_std": args.obs_path_mask_noise_std,
         "obs_no_proprio": args.obs_no_proprio,
         "obs_continuous_gripper": args.obs_continuous_gripper,
         "obs_crop": args.obs_crop,
