@@ -108,6 +108,7 @@ def eval_3dda(
     obs_mask=False,
     obs_mask_w_path=False,
     obs_gt=False,
+    mask_pixels=10,
     open_loop_obs_key="obs",
     model_name_vlm="vila_3b_path_mask_fast",
     server_ip_vlm=None,
@@ -281,14 +282,17 @@ def eval_3dda(
                     obs_crop=model_config.obs_crop,
                     obs_crop_cube=model_config.obs_crop_cube,
                     obs_noise_std=0.0,
+                    obs_path_mask_noise_std=0.0,
                     obs_discrete_gripper=not model_config.obs_continuous_gripper,
                     obs_no_proprio=model_config.obs_no_proprio,
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
+                    mask_pixels=mask_pixels,
                     obs_outlier=False, # real,
                     obs_gt=obs_gt,
                     device=device,
+                    action_space=model_config.action_space,
                 )
 
                 if obs_path:

@@ -12,15 +12,15 @@ from problem_reduction.utils.normalize import normalize
 from problem_reduction.points.pointclouds import depth_to_points
 
 class RobotEnv:
-    def __init__(self, model_path, controller="abs_joint", camera_name="front", img_render=[480, 640], img_resize=None, calib_dict=None, reset_qpos_noise_std=0., n_steps=50, time_steps=0.002):
+    def __init__(self, model_path, controller="abs_joint", camera_name="front", img_render=[480, 640], img_resize=None, calib_dict=None, reset_qpos_noise_std=0., n_steps=50, dt=0.002):
 
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
 
         self.model.body_gravcomp[:] = 1.0
         
-        self.time_steps = time_steps
-        self.model.opt.timestep = time_steps
+        self.dt = dt
+        self.model.opt.timestep = dt
         self.n_steps = n_steps
 
         joint_names = [
@@ -42,28 +42,10 @@ class RobotEnv:
             self.model.actuator(name).id for name in ["joint8"]
         ]
 
-        self.ee_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "ee_site")
+        self.ee_site_name = "ee_site_curobo"
+        self.ee_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, self.ee_site_name)
 
-        # self.reset_qpos = np.array([0.0, -1.3, 0.0, -2.5, 0.0, 1.0, 0.])
-        
-        # isaac pose
-        # self.reset_qpos = np.array(
-        #     [
-        #         0.01159181,
-        #         -0.52629131,
-        #         0.01545296,
-        #         -2.77785516,
-        #         -0.0103323,
-        #         3.00063801,
-        #         0.7462694,
-        #     ]
-        # )
-        
-        # much closer
-        self.reset_qpos = np.array([
-            0.08535511, -0.8716217 , -0.11309249, -2.92283648, -0.13878459,
-        2.05753043,  0.88281583
-        ])
+        self.reset_qpos = np.array([-0.14079221, -0.22369175,  0.14752499, -2.70154574,  0.05334389, 2.47952004,  0.74690646])
 
         self.gripper_state = 1.0
         self.reset_qpos_noise_std = reset_qpos_noise_std
@@ -89,6 +71,21 @@ class RobotEnv:
                 
         self.action_dimension = 7 + 1
         self.controller = controller
+
+        if self.controller == "abs_ee" or self.controller == "rel_ee":
+            from problem_reduction.robot.mink_ik import MinkIK
+            model_path = "/".join(model_path.split("/")[:-1]) + "/scene_ik.xml"
+            self.mink = MinkIK(
+                xml_path=model_path, 
+                ee_site_name=self.ee_site_name,
+                position_threshold=1e-4,
+                orientation_threshold=1e-4,
+                position_cost=1.0,
+                orientation_cost=1.0,
+                posture_cost=1e-3,
+                dt=self.dt,
+                max_iterations=1000,
+            )
 
     def reset_camera_pose(self):
         if self.calib_dict is not None:
@@ -200,47 +197,47 @@ class RobotEnv:
         # points = depth_to_points(depth, intrinsic=intrinsic, extrinsic=extrinsic, depth_scale=1.0)
         return points
 
-    def compute_ik(self, target_pos, target_quat, integration_dt=0.1, damping=1e-4):
+    # def compute_ik(self, target_pos, target_quat, integration_dt=0.1, damping=1e-4):
     
-        curr_pos, curr_quat = self.get_ee_pos(), self.get_ee_quat()
+    #     curr_pos, curr_quat = self.get_ee_pos(), self.get_ee_quat()
 
-        # Pre-allocate numpy arrays.
-        jac = np.zeros((6, self.model.nv))
-        diag = damping * np.eye(6)
-        error = np.zeros(6)
-        error_pos = error[:3]
-        error_ori = error[3:]
-        curr_quat_conj = np.zeros(4)
-        error_quat = np.zeros(4)
+    #     # Pre-allocate numpy arrays.
+    #     jac = np.zeros((6, self.model.nv))
+    #     diag = damping * np.eye(6)
+    #     error = np.zeros(6)
+    #     error_pos = error[:3]
+    #     error_ori = error[3:]
+    #     curr_quat_conj = np.zeros(4)
+    #     error_quat = np.zeros(4)
 
-        # Position error.
-        error_pos[:] = target_pos - curr_pos
+    #     # Position error.
+    #     error_pos[:] = target_pos - curr_pos
 
-        # Orientation error.
-        mujoco.mju_negQuat(curr_quat_conj, curr_quat)
-        mujoco.mju_mulQuat(error_quat, target_quat, curr_quat_conj)
-        mujoco.mju_quat2Vel(error_ori, error_quat, 1.0)
+    #     # Orientation error.
+    #     mujoco.mju_negQuat(curr_quat_conj, curr_quat)
+    #     mujoco.mju_mulQuat(error_quat, target_quat, curr_quat_conj)
+    #     mujoco.mju_quat2Vel(error_ori, error_quat, 1.0)
 
-        # Get the Jacobian with respect to the end-effector site.
-        mujoco.mj_jacSite(self.model, self.data, jac[:3], jac[3:], self.ee_site_id)
-        # Solve system of equations: J @ dq = error.
-        jac = jac[:, self.joint_qpos_ids]
-        dq = jac.T @ np.linalg.solve(jac @ jac.T + diag, error)
+    #     # Get the Jacobian with respect to the end-effector site.
+    #     mujoco.mj_jacSite(self.model, self.data, jac[:3], jac[3:], self.ee_site_id)
+    #     # Solve system of equations: J @ dq = error.
+    #     jac = jac[:, self.joint_qpos_ids]
+    #     dq = jac.T @ np.linalg.solve(jac @ jac.T + diag, error)
 
-        # Create full joint velocity vector
-        dq_full = np.zeros(self.model.nv)
-        dq_full[self.joint_qpos_ids] = dq
+    #     # Create full joint velocity vector
+    #     dq_full = np.zeros(self.model.nv)
+    #     dq_full[self.joint_qpos_ids] = dq
 
-        # Get full joint position vector
-        q_full = self.data.qpos.copy()
+    #     # Get full joint position vector
+    #     q_full = self.data.qpos.copy()
         
-        # Integrate joint velocities to obtain joint positions
-        mujoco.mj_integratePos(self.model, q_full, dq_full, integration_dt)
+    #     # Integrate joint velocities to obtain joint positions
+    #     mujoco.mj_integratePos(self.model, q_full, dq_full, integration_dt)
 
-        # Return only the controlled joint positions
-        q = q_full[self.joint_qpos_ids]
-        q = np.clip(q, self.min_qpos, self.max_qpos)
-        return q
+    #     # Return only the controlled joint positions
+    #     q = q_full[self.joint_qpos_ids]
+    #     q = np.clip(q, self.min_qpos, self.max_qpos)
+    #     return q
 
     def step(self, action):
         if self.controller == "abs_joint":
@@ -248,10 +245,12 @@ class RobotEnv:
         elif self.controller == "rel_joint":
             qpos = self.data.qpos[self.joint_qpos_ids] + action[:7]
         elif self.controller == "abs_ee":
-            qpos = self.compute_ik(action[:3], action[3:7])
+            qpos = self.mink.compute_ik(position=action[:3], quaternion=action[3:7], q_init=self.get_qpos())
         elif self.controller == "rel_ee":
+            raise NotImplementedError("Rel ee controller not implemented")
+            # TODO: proper sum quaternions
             curr_ee_pose = self.get_ee_pose()
-            qpos = self.compute_ik(curr_ee_pose[:3] + action[:3], curr_ee_pose[3:] + action[3:7])
+            qpos = self.mink.compute_ik(position=curr_ee_pose[:3] + action[:3], quaternion=curr_ee_pose[3:] + action[3:7], q_init=self.get_qpos())
         else:
             raise ValueError(f"Invalid controller: {self.controller}")
         gripper_act = action[7]

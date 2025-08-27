@@ -6,6 +6,80 @@ import torch
 from torch import optim
 import numpy as np
 
+def small_random_rotation_matrix_batch(B, max_angle=3 * torch.pi / 180, device='cpu'):
+    angles = torch.empty(B, 3, device=device).uniform_(-max_angle, max_angle)
+    ax, ay, az = angles[:, 0], angles[:, 1], angles[:, 2]
+
+    cx, cy, cz = torch.cos(angles.T)
+    sx, sy, sz = torch.sin(angles.T)
+
+    zeros = torch.zeros(B, device=device)
+    ones = torch.ones(B, device=device)
+
+    Rx = torch.stack([
+        torch.stack([ones, zeros, zeros], dim=1),
+        torch.stack([zeros, cx, -sx], dim=1),
+        torch.stack([zeros, sx, cx], dim=1)
+    ], dim=1)
+
+    Ry = torch.stack([
+        torch.stack([cy, zeros, sy], dim=1),
+        torch.stack([zeros, ones, zeros], dim=1),
+        torch.stack([-sy, zeros, cy], dim=1)
+    ], dim=1)
+
+    Rz = torch.stack([
+        torch.stack([cz, -sz, zeros], dim=1),
+        torch.stack([sz, cz, zeros], dim=1),
+        torch.stack([zeros, zeros, ones], dim=1)
+    ], dim=1)
+
+    return torch.bmm(Rz, torch.bmm(Ry, Rx))
+
+def augment_pointcloud_batch(pc, translation_range=0.03, rotation_range=3, noise_range=0.01):
+    # pc: [B, T, 3, H, W]
+    B, T, C, H, W = pc.shape
+    assert C == 3, "Expected 3 channels for XYZ data"
+    device = pc.device
+
+    pc = pc.permute(0, 1, 3, 4, 2).contiguous()  # [B, T, H, W, 3]
+    pc_flat = pc.view(B, T, H * W, 3)  # [B, T, N, 3]
+
+    # Translation: [B, 1, 1, 3] (same for all points in B)
+    translation = torch.empty(B, 1, 1, 3, device=device).uniform_(-translation_range, translation_range)
+    pc_flat = pc_flat + translation
+
+    # Rotation: [B, 3, 3]
+    R = small_random_rotation_matrix_batch(B, max_angle=rotation_range * torch.pi / 180, device=device)
+    pc_flat = torch.matmul(pc_flat, R.transpose(1, 2).unsqueeze(1))  # [B, T, N, 3]
+
+    # Gaussian noise: [B, T, N, 3] (per point)
+    noise = torch.randn(B, T, H * W, 3, device=device) * noise_range
+    pc_flat = pc_flat + noise
+
+    pc = pc_flat.view(B, T, H, W, 3).permute(0, 1, 4, 2, 3).contiguous()  # [B, T, 3, H, W]
+    return pc
+
+def augment_rgb_sequence(imgs, brightness=0.2, contrast=0.2, color_jitter=0.1):
+    # imgs: [B, T, C, H, W]
+    device = imgs.device
+    B, T, C, H, W = imgs.shape
+
+    # Brightness: [B, 1, 1, 1]
+    brightness_shift = (torch.rand(B, 1, 1, 1, device=device) * 2 - 1) * brightness
+    imgs = imgs + brightness_shift.unsqueeze(1)  # [B, T, C, H, W]
+
+    # Contrast: [B, 1, 1, 1]
+    contrast_scale = 1 + (torch.rand(B, 1, 1, 1, device=device) * 2 - 1) * contrast
+    mean = imgs.mean(dim=(3, 4), keepdim=True)  # [B, T, C, 1, 1]
+    imgs = (imgs - mean) * contrast_scale.unsqueeze(1) + mean
+
+    # Color jitter: [B, C, 1, 1]
+    jitter = 1 + (torch.rand(B, C, 1, 1, device=device) * 2 - 1) * color_jitter
+    imgs = imgs * jitter.unsqueeze(1)  # [B, T, C, H, W]
+
+    return imgs.clamp(0, 1)
+
 def get_model(da_config, device="cpu"):
 
     from diffuser_actor import DiffuserActor, DiffuserJointer
@@ -15,26 +89,25 @@ def get_model(da_config, device="cpu"):
     if da_config.action_space == "abs_ee":
         model = DiffuserActor(
             backbone="clip",
-            image_size=(256,256),
+            image_size=da_config.image_size,
             embedding_dim=da_config.embedding_dim,
+            num_attn_heads=da_config.num_attn_heads,
             num_vis_ins_attn_layers=2,
             use_instruction=True,
             fps_subsampling_factor=da_config.fps_subsampling_factor,
-            # TODO: check those
-            # gripper_loc_bounds=np.array([[-1.0, -1.0, 0], [1.0, 1.0, 1.0]]),
+            high_res_features=da_config.high_res_features,
             gripper_loc_bounds=np.array([
-                [0, -0.5, -0.01],
-                [1, 0.5, 0.5]
+                [0.25, -0.25, 0.0],
+                [0.75, 0.25, 0.4]
             ]),
             # rotation_parametrization="quat", # -> 6D is hardcoded ...
             rotation_parametrization='6D',
-            quaternion_format="xyzw",
+            quaternion_format="wxyz",
             diffusion_timesteps=da_config.diffusion_timesteps,
             nhist=da_config.history,
             relative=False,
             lang_enhanced=False,
-            loss_weights=[30., 10., 1.]
-            # loss_weights=[30., 10., 0.]
+            loss_weights=da_config.loss_weights, # [30., 10., 1.]
         )
     elif da_config.action_space == "joint":
         model = DiffuserJointer(

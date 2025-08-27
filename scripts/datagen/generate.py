@@ -54,7 +54,7 @@ if __name__ == "__main__":
     outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     calib_file = os.path.join(
-        ROOT_DIR, "robot/calibrations", "real_07_29_09_34.json"
+        ROOT_DIR, "robot/calibrations", "real_08_16.json"
     )
     calib_dict = read_calibration_file(calib_file)
 
@@ -66,7 +66,8 @@ if __name__ == "__main__":
         "xml_path": "robot/sim/franka_emika_panda/scene_new.xml",
         "num_objs": args.num_objs,
         "size": 0.025,
-        "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
+        # "obj_pos_dist": [[0.3, -0.2, 0.03], [0.6, 0.2, 0.03]],
+        "obj_pos_dist": [[0.3, -0.2, 0.03], [0.7, 0.2, 0.03]],
         "obj_ori_dist": [[0, 0], [0, 0], [-np.pi / 16, np.pi / 16]],
         "seed": 0,
         "obs_keys": [
@@ -93,19 +94,26 @@ if __name__ == "__main__":
         "img_resize": [128, 128],
         "calib_dict": calib_dict,
         "n_steps": 50,
-        "time_steps": 0.002,
-        "reset_qpos_noise_std": 1e-2,
-        "controller": "abs_joint",
+        "dt": 0.002,
+        "reset_qpos_noise_std": 2e-2,
+        "controller": "abs_ee", # "abs_joint",
     }
     env = CubeEnv(**env_config)
 
     data_config = {
         "n_episodes": args.num_samples,
         "visual_augmentation": args.visual_augmentation,
-        "action_noise_std": 0.0, # 5e-3
+        "action_noise_std": 2e-3, # 2e-3, # 0.0, # 5e-3
+        "min_velocity": 0.04,
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
-    mp = CuroboWrapper(interpolation_dt=env.n_steps * env.time_steps)
+    mp = CuroboWrapper(interpolation_dt=env.n_steps * env.dt)
+
+    # NOTE :hard code reset qpos using ee space
+    # env.reset()
+    # reset_qpos_curobo = mp.compute_ik(torch.tensor([[0.4, 0.0, 0.3]], device='cuda:0'), torch.tensor([[ 0., 1., 0., 0.]], device='cuda:0'))
+    # reset_qpos_mink = env.mink.compute_ik(position=np.array([0.4, 0.0, 0.3]), quaternion=np.array([0., 1., 0., 0.]), q_init=env.get_qpos())
+    # env.reset_qpos = reset_qpos_mink
 
     data_collector = DataCollector(
         env,
@@ -137,6 +145,7 @@ if __name__ == "__main__":
         obj_pos, obj_quat = obj_poses[:3], obj_poses[3:7]
         qpos = env.get_qpos()
         prev_qpos = env.get_qpos()
+        prev_ee_pose = env.get_ee_pose()
 
         # plan motion
         try:
@@ -166,7 +175,7 @@ if __name__ == "__main__":
         # subsample motion to have minimum velocity
         qpos_traj = np.concatenate(qpos_traj)
         gripper_traj = np.concatenate(gripper_traj)
-        indices = subsample_min_velocity(qpos_traj, 0.05, req_indices=req_indices)
+        indices = subsample_min_velocity(qpos_traj, data_config["min_velocity"], req_indices=req_indices)
 
         # execute motion
         for qpos, gripper in zip(qpos_traj[indices], gripper_traj[indices]):
@@ -175,8 +184,12 @@ if __name__ == "__main__":
             )
             if env_config["controller"] == "rel_joint":
                 act = np.concatenate((qpos - prev_qpos + noise, [gripper]))
-            else:
+            elif env_config["controller"] == "abs_joint":
                 act = np.concatenate((qpos + noise, [gripper]))
+            elif env_config["controller"] == "abs_ee":
+                act = np.concatenate((env.mink.compute_fk(qpos), [gripper]))
+            # elif env_config["controller"] == "rel_ee":
+            #     act = np.concatenate((env.mink.compute_fk(qpos) + action[:3], [gripper]))
             data_collector.step(act)
             prev_qpos = env.get_qpos()
 

@@ -222,6 +222,85 @@ def inference_vila(message, args):
     outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0]
     return outputs.strip()
 
+def inference_vila_batch(messages, args):
+
+    from llava.constants import IMAGE_TOKEN_INDEX
+
+    # messages: list of [quest, PIL.Image] (one image per sample); extend to multi-image as needed
+    input_ids_list, images_list = [], []
+
+    # BUILD PROMPTS
+    prompts = []
+    imgs = []
+    for message in messages:
+        quest, img = message[0], message[1:]  # imgs is a list of PIL Images
+
+        # build prompt per sample
+        conv = conv_templates[args.conv_mode].copy()
+        conv.append_message(conv.roles[0], quest)
+        conv.append_message(conv.roles[1], None)
+        prompt = conv.get_prompt()
+        prompts.append(prompt)
+        imgs.append(img)
+
+    # Process images for batch
+    imgs_tensor = []
+    for img in imgs:
+        images_tensor = process_images(img, image_processor, model.config).to(
+            model.device, dtype=torch.float16
+        )
+        imgs_tensor.append(images_tensor)
+    imgs_tensor = torch.stack(imgs_tensor, dim=0)
+
+    # Tokenize all prompts
+    batch_input_ids = [
+        tokenizer_image_token(
+            prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt"
+        )
+        .squeeze(0)
+        .to(model.device)
+        for prompt in prompts
+    ]
+
+    # Pad sequences to same length for batching
+    max_len = max([len(seq) for seq in batch_input_ids])
+    padded_input_ids = []
+    for seq in batch_input_ids:
+        if len(seq) >= max_len:
+            padded_seq = seq[:max_len]
+        else:
+            pad_token_id = (
+                tokenizer.pad_token_id
+                if tokenizer.pad_token_id is not None
+                else 0
+            )
+            padding = torch.full(
+                (max_len - len(seq),),
+                pad_token_id,
+                dtype=seq.dtype,
+                device=seq.device,
+            )
+            padded_seq = torch.cat([seq, padding])
+        padded_input_ids.append(padded_seq)
+
+    batch_input_ids = torch.stack(padded_input_ids)
+    
+    # ensure padding is defined (helps decoding if you later batch tensors)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        model.config.pad_token_id = tokenizer.pad_token_id
+
+    with torch.inference_mode():
+        output_ids = model.generate(
+            batch_input_ids,                  # list of 1xT tensors
+            images=imgs_tensor,              # list of image tensors aligned to inputs
+            max_new_tokens=args.max_new_tokens,
+            use_cache=True,
+        )
+
+    outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+    return [o.strip() for o in outputs]
+    
 
 def inference_vila_perplexity(message, args, target):
 
@@ -305,7 +384,7 @@ def inference_vila_perplexity(message, args, target):
     return output_string
 
 
-def add_answer_to_img(img, answer, prompt_type, color="red", line_size=3, add_mask=True):
+def add_answer_to_img(img, answer, prompt_type, color="red", line_size=3, add_mask=True, mask_pixels=10):
 
     out = get_path_from_answer(answer, prompt_type)
 
@@ -333,7 +412,7 @@ def add_answer_to_img(img, answer, prompt_type, color="red", line_size=3, add_ma
         )
 
     if "mask" in prompt_type and scaled_mask is not None and add_mask:
-        img = add_mask_2d_to_img(img, scaled_mask, mask_pixels=10)
+        img = add_mask_2d_to_img(img, scaled_mask, mask_pixels=mask_pixels)
     # mask = get_mask_2d(img, scaled_mask, mask_pixels=mask_pixels)
 
     if "path" in prompt_type and scaled_path is not None:
@@ -446,6 +525,37 @@ def vila_inference(rgb, lang_instr, prompt_type="path_mask", args={}):
 
     return image, path_pred, mask_pred
 
+def vila_inference_batch(rgbs, lang_instrs, prompt_type="path_mask", args={}):
+
+    messages = []
+
+    for rgb, lang_instr in zip(rgbs, lang_instrs):
+        prompt = get_prompt(quest=lang_instr, prompt_type=prompt_type)
+        image_raw = Image.fromarray(rgb)
+
+        # preprocess
+        image_cropped = center_crop_and_resize(image_raw, min(image_raw.size), 384)
+        message = [prompt, image_cropped]
+        messages.append(message)
+
+    # inference
+    answer_preds = inference_vila_batch(messages, args)
+    
+    # postprocess
+    image_preds = []
+    path_preds = []
+    mask_preds = []
+
+    for rgb, answer_pred in zip(rgbs, answer_preds):
+        image_raw = np.array(rgb)
+        image_pred, path_pred, mask_pred = add_answer_to_img(
+            image_raw, answer_pred, prompt_type, color="red", add_mask=True, mask_pixels=10
+        )
+        image_preds.append(image_pred)
+        path_preds.append(path_pred)
+        mask_preds.append(mask_pred)
+
+    return image_preds, path_preds, mask_preds
 
 def vila_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="path_mask"):
 
@@ -456,6 +566,7 @@ def vila_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="path
     )
 
     return image, path_pred, mask_pred
+
 
 
 if __name__ == "__main__":

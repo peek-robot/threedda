@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, masking_ratio=0.1, device=None):
+def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_path_mask_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_outlier=False, mask_pixels=10, action_space="joint", device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -35,19 +35,24 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # instruction: (B, max_instruction_length, 512)
     # curr_gripper: (B, nhist, 3+4+X)
 
-    qpos = sample["obs"]["qpos"]
     # discrete gripper state for action prediction -> BCE loss
     gripper_state_discrete = sample["obs"]["gripper_state_discrete"].float()
     # continuous gripper state for observations -> normalize 0-1
     gripper_state_continuous = sample["obs"]["gripper_state_continuous"].float() / 0.04
+
+    if action_space == "joint":
+        act = sample["obs"]["qpos"]
+    elif action_space == "abs_ee":
+        act = sample["obs"]["ee_pose"]
+
     # future actions
-    gt_trajectory = torch.cat((qpos[:, history:], gripper_state_discrete[:, history:]), dim=-1)
+    gt_trajectory = torch.cat((act[:, history:], gripper_state_discrete[:, history:]), dim=-1)
     # past actions
     if obs_discrete_gripper:
-        curr_gripper = torch.cat((qpos[:, :history], gripper_state_discrete[:, :history]), dim=-1)
+        curr_gripper = torch.cat((act[:, :history], gripper_state_discrete[:, :history]), dim=-1)
     else:
-        curr_gripper = torch.cat((qpos[:, :history], gripper_state_continuous[:, :history]), dim=-1)
-    # (optional) add noise to qpos obs
+        curr_gripper = torch.cat((act[:, :history], gripper_state_continuous[:, :history]), dim=-1)
+    # (optional) add noise to ee_pose/qpos obs
     if obs_noise_std > 0:
         curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape).to(curr_gripper.device)
     if obs_no_proprio:
@@ -61,19 +66,6 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     tmp_device = sample["obs"][depth_key].device
     B, H, W = sample["obs"][depth_key].shape
 
-    # store path as 2d image
-    if obs_path:
-        path_rgbs = []
-        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
-            # unpad path
-            m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
-            path_unpad = path[m]
-            path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
-            # add path to rgb
-            path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
-            path_rgbs.append(torch.from_numpy(path_rgb))
-        sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
-
     # store mask as 2d depth
     if obs_mask:
         mask_depths = []
@@ -81,9 +73,11 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
+            mask_unpad = mask_unpad + torch.normal(0, obs_path_mask_noise_std, mask_unpad.shape).to(mask_unpad.device)
+            mask_unpad = torch.clamp(mask_unpad, 0., 1.)
             mask_unpad = scale_path(mask_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # add mask to depth
-            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=int(H * masking_ratio))
+            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_unpad.cpu().numpy(), mask_pixels=mask_pixels)
             mask_depths.append(torch.from_numpy(mask_depth))
         sample["obs"][depth_key] = torch.stack(mask_depths, dim=0).to(tmp_device)
 
@@ -94,21 +88,46 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
+            mask_unpad = mask_unpad + torch.normal(0, obs_path_mask_noise_std, mask_unpad.shape).to(mask_unpad.device)
+            mask_unpad = torch.clamp(mask_unpad, 0., 1.)
             mask_unpad = scale_path(mask_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
+            path_unpad = path_unpad + torch.normal(0, obs_path_mask_noise_std, path_unpad.shape).to(path_unpad.device)
+            path_unpad = torch.clamp(path_unpad, 0., 1.)
             path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
             # combine mask and path
             mask_w_path_unpad = torch.cat((mask_unpad, path_unpad), dim=0)
             # add mask w/ path to depth
-            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_w_path_unpad.cpu().numpy(), mask_pixels=int(H * masking_ratio))
+            mask_depth = add_mask_2d_to_img(depth.cpu().numpy(), mask_w_path_unpad.cpu().numpy(), mask_pixels=mask_pixels)
             mask_depths.append(torch.from_numpy(mask_depth))
         sample["obs"][depth_key] = torch.stack(mask_depths, dim=0).to(tmp_device)
 
     # mask out pixels
     if obs_path and (obs_mask or obs_mask_w_path):
         sample["obs"][img_key][sample["obs"][depth_key] == 0] = 0.
+    
+    # store path as 2d image
+    # NOTE: do this after RGB is masked out!
+    if obs_path:
+        path_rgbs = []
+        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
+            # unpad path
+            m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
+            path_unpad = path[m]
+            path_unpad = path_unpad + torch.normal(0, obs_path_mask_noise_std, path_unpad.shape).to(path_unpad.device)
+            path_unpad = torch.clamp(path_unpad, 0., 1.)
+            path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
+            # add path to rgb
+            path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
+            path_rgbs.append(torch.from_numpy(path_rgb))
+        sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
+
+    # import matplotlib.pyplot as plt
+    # plt.imsave("mask_depth_rgb.png", sample["obs"][img_key][0].cpu().numpy())
+    # plt.imsave("mask_depth_depth.png", sample["obs"][depth_key][0].cpu().numpy())
+    # import IPython; IPython.embed()
     
     points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
@@ -128,6 +147,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     
     # WARNING: zero_points with min < -1. will also crop the mask predictions from the colors/rgb!
     if obs_crop:
+        raise NotImplementedError("obs_crop not supported")
 
         # # no table surface
         # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
@@ -139,6 +159,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
         points, colors = zero_points(points, colors, crop_min=[0., -0.3, -0.1], crop_max=[0.7, 0.3, 0.8])
     
     if obs_crop_cube:
+        raise NotImplementedError("obs_crop not supported")
         points, colors = zero_points(points, colors, crop_min=[0.2, -0.3, 0.02], crop_max=[0.7, 0.3, 0.3])
     
     if obs_outlier:

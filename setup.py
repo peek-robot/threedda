@@ -9,6 +9,8 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "mujoco",
+        "mink",
+        "qpsolvers[quadprog]",
         "shapely",
         "wandb",
         "wandb[media]",

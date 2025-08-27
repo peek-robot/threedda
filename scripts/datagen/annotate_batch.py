@@ -11,6 +11,7 @@ from problem_reduction.vila.inference_helpers import (
     load_model,
     vila_inference,
     vila_inference_api,
+    vila_inference_batch
 )
 
 if __name__ == "__main__":
@@ -26,7 +27,7 @@ if __name__ == "__main__":
         "--path", type=str, default="data/pick_and_place_1000_3_objs_va_high_cam.hdf5"
     )
     parser.add_argument(
-        "--split_size", type=int, default=25
+        "--split_size", type=int, default=16
     )
     parser.add_argument(
         "--server_ip", type=str, default=None
@@ -54,6 +55,9 @@ if __name__ == "__main__":
     for i, dk in tqdm(enumerate(file.keys())):
 
         # if "path_vlm" in file[dk]["obs"].keys() and "mask_vlm" in file[dk]["obs"].keys():
+        #     print("found", dk)
+        #     continue
+        
         #     if not np.all(file[dk]["obs"]["path_vlm"][:] == 0) and not np.all(file[dk]["obs"]["mask_vlm"][:] == 0):
         #         continue
 
@@ -63,33 +67,32 @@ if __name__ == "__main__":
         rgbs = file[dk]["obs"]["rgb"]
         lang_instr = file[dk]["obs"].attrs["lang_instr"]
 
-        paths_pad, masks_pad, images = [], [], []
-        # HACK: single sub-task for now
-        # split_size = -1
-        # for split_idx in range(1):
+        paths_pad, masks_pad = [], []
+        
         split_size = args.split_size
         if split_size == -1:
             split_size = np.random.randint(8, 32)
-        for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
 
-            # inference
+        # preprocess
+        images_raw = []
+        for split_idx in range(int(np.ceil(len(rgbs) / split_size))):
+            images_raw.append(rgbs[split_idx * split_size])
+
+        # inference
+        if args.server_ip is None:
+            # print("batch_size", len(images_raw), "traj_len", rgbs.shape[0])
             try:
-                if args.server_ip is None:
-                    image = rgbs[split_idx * split_size]
-                    image, path, mask = vila_inference(
-                        image, lang_instr, args=model_args
-                    )
-                else:
-                    image = rgbs[split_idx * split_size]
-                    image, path, mask = vila_inference_api(
-                        image, lang_instr, model_name=args.model_path, server_ip=args.server_ip
-                    )
+                images_pred, paths, masks = vila_inference_batch(
+                    images_raw, [lang_instr] * len(images_raw), args=model_args
+                )
             except Exception as e:
                 print(e)
-                path = np.zeros((1, 2))
-                mask = np.zeros((1, 2))
-            images.append(image)
+                images_pred = np.zeros((len(images_raw), 3, 224, 224))
+                paths = np.zeros((len(images_raw), 1, 2))
+                masks = np.zeros((len(images_raw), 1, 2))
 
+        # postprocess
+        for path, mask in zip(paths, masks):
             # path shape (N, 2) pad N with zeros until N=P
             max_path_length = 255
             path_pad = np.pad(
@@ -126,7 +129,7 @@ if __name__ == "__main__":
         masks_pad = np.concatenate(masks_pad, axis=0)
 
         if i < 10:
-            plt.imsave(f"{lang_instr}.png", np.concatenate(images, axis=1))
+            plt.imsave(f"{lang_instr}.png", np.concatenate(images_pred, axis=1))
 
         # store raw path
         try:
