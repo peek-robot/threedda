@@ -1,6 +1,14 @@
 import cv2
 import numpy as np
 from matplotlib import cm
+import PIL
+import base64
+import time
+import re
+from io import BytesIO
+from openai import OpenAI
+from problem_reduction.vila.prompts import get_prompt
+from problem_reduction.vila.inference_helpers import center_crop_and_resize
 
 GRIPPER_CLOSE = 0
 GRIPPER_OPEN = 1
@@ -111,3 +119,100 @@ def process_answer(input_str):
             continue
         processed_points.append([x, y, action_flag])
     return processed_points
+
+
+def send_request(
+    image,
+    quest,
+    prompt_type,
+    server_ip,
+    max_tokens=1024,
+    temperature=0.0,
+    top_p=0.95,
+    max_retries=5,
+    model_name="vila_13b_path_mask_new",
+    verbose=False,
+):
+    """Send image and quest to HAMSTER model and get response."""
+    # Ensure image is in BGR format for OpenCV
+
+    image = PIL.Image.fromarray(image)
+    # preprocess the image
+    image_resized = center_crop_and_resize(image, min(image.size), 384)
+
+    # Encode image to base64
+    image_resized = np.asarray(image_resized)
+    # _, encoded_image_array = cv2.imencode(".jpg", image_resized)
+    # encoded_image = base64.b64encode(encoded_image_array.tobytes()).decode("utf-8")
+
+    buffer = BytesIO()
+    PIL.Image.fromarray(image_resized).save(buffer, format='JPEG')
+    encoded_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    if verbose:
+        print(f"Sending request with quest: {quest}")
+
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            start_time = time.time()  # Record start time
+            client = OpenAI(base_url=server_ip, api_key="fake-key")
+            prompt = get_prompt(quest, prompt_type, prompt_eval=False)
+            response = client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{encoded_image}"
+                                },
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+                max_tokens=int(max_tokens),
+                model=model_name,
+                extra_body={
+                    "prompt_type": prompt_type,
+                    "num_beams": 1,
+                    "use_cache": True,
+                    "temperature": float(temperature),
+                    "top_p": float(top_p),
+                },
+            )
+            end_time = time.time()  # Record end time
+            response_text = response.choices[0].message.content[0]["text"]
+            duration = end_time - start_time
+            if verbose:
+                print(f"Server response received in {duration:.2f} seconds.")
+            return response_text
+        except Exception as e:
+            retry_count += 1
+            wait_time = 2**retry_count  # Exponential backoff
+            if retry_count < max_retries:
+                print(f"Error connecting to server: {e}")
+                print(
+                    f"Retrying in {wait_time} seconds... (Attempt {retry_count} of {max_retries})"
+                )
+                time.sleep(wait_time)
+            else:
+                print(f"Failed after {max_retries} attempts: {e}")
+                return None
+    return None
+
+def hamster_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="hamster"):
+
+    assert model_name == "hamster_13b"
+    answer_pred = send_request(rgb, lang_instr, prompt_type=prompt_type, server_ip=server_ip, model_name=model_name)
+
+    from problem_reduction.vila.inference_hamster import process_answer, draw_lines_on_image_cv, annotate_image
+
+    response_text_strip = re.search(r'<ans>(.*?)</ans>', answer_pred, re.DOTALL).group(1)
+    points = process_answer(response_text_strip)
+    output_image = draw_lines_on_image_cv(rgb.copy(), points, draw_action=True)
+    annotated_image = annotate_image(output_image.copy(), lang_instr)
+
+    return annotated_image, points, None

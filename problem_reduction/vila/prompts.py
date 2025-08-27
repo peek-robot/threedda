@@ -28,7 +28,6 @@ def get_prompt(quest, prompt_type, history=None, prompt_eval=False):
         "The tuple denotes point x and y location of the end effector in the image. The action tags indicate gripper actions.\n"
         "Coordinates should be floats between 0 and 1, representing relative positions.\n"
         "Remember to provide points between <ans> and </ans> tags and think step by step."
-        prompt_eval=False
     
     else:
         raise NotImplementedError(f"Prompt type {prompt_type} not implemented.")
