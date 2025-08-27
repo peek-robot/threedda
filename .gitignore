@@ -5,6 +5,7 @@ wandb/
 data/
 results/
 tmp/
+slurm/
 
 problem_reduction.egg-info
 problem_reduction/robot/sim/franka_emika_panda/tmp.xml

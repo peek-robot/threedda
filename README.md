@@ -13,14 +13,16 @@ module load cuda/11.8.0
 
 ## base package
 ```bash
-ENV_NAME=[!REPLACE ME!]
-mamba create -n $ENV_NAME python=3.10
-mamba activate $ENV_NAME
 git clone https://github.com/memmelma/problem_reduction.git
 cd problem_reduction
 git submodule update --init --recursive
-pip install -e .
+```
+
+```bash
+ENV_NAME=[!REPLACE ME!]
+mamba create -n $ENV_NAME python=3.10
 mamba activate $ENV_NAME
+pip install -e .
 ```
 
 ## data generation
