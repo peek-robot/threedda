@@ -257,7 +257,8 @@ def train(
         )
 
         # compute eval metrics
-        if epoch > 300 and model_config.eval_every_n_epochs == 0 and epoch > 0:
+        if epoch % model_config.eval_every_n_epochs == 0 and epoch > 0:
+        # if epoch > 300 and model_config.eval_every_n_epochs == 0 and epoch > 0:
             test_losses = {
                 "total_loss": [],
             }
@@ -346,12 +347,13 @@ def train(
             wandb.log({"epoch": epoch, "test/obs_pcd": wandb.Image(z_grid)})
 
         # compute eval success
-        if epoch > 500 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        if epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
+        # if epoch > 500 and epoch % model_config.eval_every_n_epochs == 0 and epoch != 0:
             
             eval_mode = "closed_loop"
             
             if task == "pick_and_place":
-                n_rollouts = 10
+                n_rollouts = 25 # 10
                 n_steps = 128
             elif task == "pick":
                 n_rollouts = 16
@@ -627,7 +629,7 @@ if __name__ == "__main__":
         "--loss_weights",
         type=float,
         nargs="+",
-        default=[30, 1],
+        default=[30., 10., 1.],
         help="loss weights",
     )
     # parse arguments
@@ -806,6 +808,9 @@ if __name__ == "__main__":
             "project": args.wandb_project,
             "run_id": wandb.run.id,
         }
+
+    # HACK to resume training with new num_epochs
+    model_config.num_epochs = args.num_epochs
 
     train(
         task=args.task,

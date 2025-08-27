@@ -54,7 +54,7 @@ if __name__ == "__main__":
     outfile = f"{args.task}_{args.num_samples}_{str(args.num_objs) + '_objs'}{'_' + 'va' if args.visual_augmentation else ''}{'_' + args.identifier if args.identifier else ''}.hdf5"
 
     calib_file = os.path.join(
-        ROOT_DIR, "robot/calibrations", "real_07_29_09_34.json"
+        ROOT_DIR, "robot/calibrations", "real_08_16.json"
     )
     calib_dict = read_calibration_file(calib_file)
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         "n_episodes": args.num_samples,
         "visual_augmentation": args.visual_augmentation,
         "action_noise_std": 2e-3, # 2e-3, # 0.0, # 5e-3
-        "min_velocity": 0.06,
+        "min_velocity": 0.04,
         "train_valid_split": 0.99 if args.num_samples > 100 else 0.9,
     }
     mp = CuroboWrapper(interpolation_dt=env.n_steps * env.dt)
