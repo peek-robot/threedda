@@ -567,6 +567,20 @@ def vila_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="path
 
     return image, path_pred, mask_pred
 
+def hamster_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="hamster"):
+
+    assert model_name == "hamster_13b"
+    answer_pred = send_request(rgb, lang_instr, prompt_type=prompt_type, server_ip=server_ip, model_name=model_name)
+
+    from problem_reduction.vila.inference_hamster import process_answer, draw_lines_on_image_cv, annotate_image
+
+    response_text_strip = re.search(r'<ans>(.*?)</ans>', answer_pred, re.DOTALL).group(1)
+    points = process_answer(response_text_strip)
+    output_image = draw_lines_on_image_cv(image.copy(), points, draw_action=True)
+    annotated_image = annotate_image(output_image.copy(), quest)
+
+    return annotated_image, points, None
+
 
 if __name__ == "__main__":
     image_path = "/gscratch/weirdlab/memmelma/simvla/pick_data_gen/house.png"

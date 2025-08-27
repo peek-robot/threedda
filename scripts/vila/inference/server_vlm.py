@@ -40,8 +40,8 @@ class ChatMessage(BaseModel):
     content: Union[str, List[Union[TextContent, ImageContent]]]
     
 class ChatCompletionRequest(BaseModel):
-    model: Literal["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast"]
-    prompt_type: Literal["path_mask", "robotpoint"]
+    model: Literal["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast", "hamster_13b"]
+    prompt_type: Literal["path_mask", "robotpoint", "hamster"]
     messages: List[ChatMessage]
     max_tokens: Optional[int] = 1024
     top_p: Optional[float] = 0.9
@@ -93,6 +93,14 @@ app = FastAPI(lifespan=lifespan)
 # Load model upon startup
 @app.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
+
+    if request.prompt_type == "hamster":
+        assert request.model == "hamster_13b"
+    elif request.prompt_type == "path_mask":
+        assert request.model in ["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast"]
+    else:
+        raise ValueError(f"Invalid prompt type: {request.prompt_type}")
+
     try:
         global tokenizer, model, image_processor, context_len
 
