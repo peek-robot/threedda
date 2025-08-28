@@ -5,6 +5,7 @@ import uuid
 from contextlib import asynccontextmanager
 import re
 import base64
+import torch
 import numpy as np
 import uvicorn
 from fastapi import FastAPI
@@ -17,7 +18,7 @@ from io import BytesIO
 from pydantic import BaseModel
 from typing import List, Literal, Optional, Union, get_args
 
-from problem_reduction.vila.inference_helpers import center_crop_and_resize, inference_vila, load_model
+from problem_reduction.vila.inference_helpers import center_crop_and_resize, inference_vila, load_model, inference_hamster
 
 tokenizer = None
 model = None
@@ -89,38 +90,58 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+def hamster_completions(request: ChatCompletionRequest):
+
+    model_args = {
+        "max_new_tokens": request.max_tokens,
+        "conv_mode": "vicuna_v1",
+        # "temperature": request.temperature,
+        # "top_p": request.top_p,
+        # "num_beams": request.num_beams,
+        # "use_cache": request.use_cache,
+    }
+    model_args = argparse.Namespace(**model_args)
+
+    answer_pred = inference_hamster(request.messages, model_args)
+    return answer_pred
+
+def vila_completions(request: ChatCompletionRequest):
+    model_args = {
+        "max_new_tokens": request.max_tokens,
+        "conv_mode": "vicuna_v1",
+        # "temperature": request.temperature,
+        # "top_p": request.top_p,
+        # "num_beams": request.num_beams,
+        # "use_cache": request.use_cache,
+    }
+    model_args = argparse.Namespace(**model_args)
+    
+    prompt = request.messages[0].content[1].text
+    image = load_image(request.messages[0].content[0].image_url.url)
+    image = center_crop_and_resize(image, min(image.size), 384)
+    message = [prompt, image]
+
+    print("USER:\n", prompt)
+    answer_pred = inference_vila(message, model_args)
+    
+    return answer_pred
 
 # Load model upon startup
 @app.post("/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
 
-    if request.prompt_type == "hamster":
-        assert request.model == "hamster_13b"
-    elif request.prompt_type == "path_mask":
-        assert request.model in ["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast"]
-    else:
-        raise ValueError(f"Invalid prompt type: {request.prompt_type}")
-
     try:
         global tokenizer, model, image_processor, context_len
 
-        model_args = {
-            "max_new_tokens": request.max_tokens,
-            "conv_mode": "vicuna_v1",
-            # "temperature": request.temperature,
-            # "top_p": request.top_p,
-            # "num_beams": request.num_beams,
-            # "use_cache": request.use_cache,
-        }
-        model_args = argparse.Namespace(**model_args)
-        
-        prompt = request.messages[0].content[1].text
-        image = load_image(request.messages[0].content[0].image_url.url)
-        image = center_crop_and_resize(image, min(image.size), 384)
-        message = [prompt, image]
+        if request.prompt_type == "hamster":
+            assert request.model == "hamster_13b"
+            answer_pred = hamster_completions(request)
+        elif request.prompt_type == "path_mask":
+            assert request.model in ["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast"]
+            answer_pred = vila_completions(request)
+        else:
+            raise ValueError(f"Invalid prompt type: {request.prompt_type}")
 
-        print("USER:\n", prompt)
-        answer_pred = inference_vila(message, model_args)
         print("\nASSISTANT:\n", answer_pred)
 
         resp_content = [TextContent(type="text", text=answer_pred)]
@@ -131,6 +152,7 @@ async def chat_completions(request: ChatCompletionRequest):
             "model": request.model,
             "choices": [{"message": ChatMessage(role="assistant", content=resp_content)}],
         }
+
     except Exception as e:
         return JSONResponse(
             status_code=500,
