@@ -142,6 +142,7 @@ def train(
                 obs_crop=model_config.obs_crop,
                 obs_crop_cube=model_config.obs_crop_cube,
                 obs_outlier=model_config.obs_outlier,
+                obs_hamster=model_config.obs_hamster,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 obs_mask_w_path=model_config.obs_mask_w_path,
@@ -286,6 +287,7 @@ def train(
                     obs_crop=model_config.obs_crop,
                     obs_crop_cube=model_config.obs_crop_cube,
                     obs_outlier=model_config.obs_outlier,
+                    obs_hamster=model_config.obs_hamster,
                     obs_path=model_config.obs_path,
                     obs_mask=model_config.obs_mask,
                     obs_mask_w_path=model_config.obs_mask_w_path,
@@ -527,6 +529,11 @@ if __name__ == "__main__":
         help="use gt",
     )
     parser.add_argument(
+        "--obs_hamster",
+        action="store_true",
+        help="use hamster",
+    )
+    parser.add_argument(
         "--obs_noise_std",
         type=float,
         default=0.01,
@@ -692,6 +699,7 @@ if __name__ == "__main__":
         "obs_mask_w_path": args.obs_mask_w_path,
         "mask_pixels": args.mask_pixels,
         "obs_gt": args.obs_gt,
+        "obs_hamster": args.obs_hamster,
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
         "high_res_features": args.high_res_features,

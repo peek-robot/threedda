@@ -17,6 +17,7 @@ from problem_reduction.robot.robot_env import CubeEnv
 from problem_reduction.utils.normalize import denormalize
 
 from problem_reduction.vila.inference_helpers import vila_inference_api
+from problem_reduction.vila.inference_hamster import hamster_inference_api
 
 def visualize_pointcloud(env, data_path, demo_idx=0):
     def depth_to_points(depth, intrinsic, extrinsic, depth_scale=1000.0):
@@ -66,11 +67,15 @@ def visualize_pointcloud(env, data_path, demo_idx=0):
         size=0.01
     )
 
-def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, model_name="vila_3b_blocks_path_mask_fast", server_ip=None, obs_path=False, obs_mask=False, vlm_cache=None, vlm_cache_step=0):
+def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, model_name="vila_3b_blocks_path_mask_fast", server_ip=None, obs_path=False, obs_mask=False, vlm_cache=None, vlm_cache_step=0, obs_hamster=False):
     if vlm_cache is None or vlm_cache_step < np.floor(timestep / update_every_timesteps).astype(int):
         vlm_cache_step = np.floor(timestep / update_every_timesteps).astype(int)
         print("Querying VLM at timestep", timestep, "...")
-        image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
+        if obs_hamster:
+            image, path_pred = hamster_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="hamster")
+            mask_pred = np.zeros_like(path_pred)
+        else:
+            image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
         
         plt.imsave(f"vlm_image_{timestep}.png", image)
 
@@ -108,6 +113,7 @@ def eval_3dda(
     obs_mask=False,
     obs_mask_w_path=False,
     obs_gt=False,
+    obs_hamster=False,
     mask_pixels=10,
     open_loop_obs_key="obs",
     model_name_vlm="vila_3b_path_mask_fast",
@@ -252,7 +258,7 @@ def eval_3dda(
                 obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
         elif obs_path or obs_mask or obs_mask_w_path:
             # initial vlm predictions and cache
-            obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path)
+            obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path, obs_hamster=obs_hamster)
         
         framestack.reset()
         framestack.add_obs(obs)
@@ -288,6 +294,7 @@ def eval_3dda(
                     obs_path=obs_path,
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
+                    obs_hamster=obs_hamster,
                     mask_pixels=mask_pixels,
                     obs_outlier=False, # real,
                     obs_gt=obs_gt,
@@ -346,7 +353,7 @@ def eval_3dda(
                     if obs_mask or obs_mask_w_path:
                         obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
 
-                elif obs_path or obs_mask or obs_mask_w_path:
+                elif obs_path or obs_mask or obs_mask_w_path and not obs_hamster:
                     # initial vlm predictions and cache
                     timestep=j*action_chunk_size
                     update_every_timesteps=update_every_timesteps_vlm
@@ -425,6 +432,7 @@ if __name__ == "__main__":
     parser.add_argument("--obs_path", action="store_true", help="Use path observations")
     parser.add_argument("--obs_mask", action="store_true", help="Use mask observations")
     parser.add_argument("--obs_mask_w_path", action="store_true", help="Use mask observations with path")
+    parser.add_argument("--obs_hamster", action="store_true", help="Use hamster observations")
     parser.add_argument("--server_ip_vlm", type=str, default=None)
     parser.add_argument("--update_every_timesteps_vlm", type=int, default=32)
     parser.add_argument("--results_dir", type=str, default="results")
@@ -449,6 +457,7 @@ if __name__ == "__main__":
         obs_path=args.obs_path,
         obs_mask=args.obs_mask,
         obs_mask_w_path=args.obs_mask_w_path,
+        obs_hamster=args.obs_hamster,
         server_ip_vlm=args.server_ip_vlm,
         real=args.real,
         update_every_timesteps_vlm=args.update_every_timesteps_vlm,
