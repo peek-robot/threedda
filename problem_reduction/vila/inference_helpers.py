@@ -27,22 +27,37 @@ from problem_reduction.vila.decode import (
 )
 
 
-def load_image(image_file):
-    if image_file.startswith("http") or image_file.startswith("https"):
-        print("downloading image from url", args.video_file)
-        response = requests.get(image_file)
+# def load_image(image_file):
+#     if image_file.startswith("http") or image_file.startswith("https"):
+#         print("downloading image from url", args.video_file)
+#         response = requests.get(image_file)
+#         image = Image.open(BytesIO(response.content)).convert("RGB")
+#     else:
+#         image = Image.open(image_file).convert("RGB")
+#     return image
+
+
+# def load_images(image_files):
+#     out = []
+#     for image_file in image_files:
+#         image = load_image(image_file)
+#         out.append(image)
+#     return out
+
+IMAGE_CONTENT_BASE64_REGEX = re.compile(r"^data:image/(png|jpe?g);base64,(.*)$")
+
+def load_image(image_url: str) -> Image:
+    if image_url.startswith("http") or image_url.startswith("https"):
+        import requests
+        response = requests.get(image_url)
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
-        image = Image.open(image_file).convert("RGB")
+        match_results = IMAGE_CONTENT_BASE64_REGEX.match(image_url)
+        if match_results is None:
+            raise ValueError(f"Invalid image url: {image_url}")
+        image_base64 = match_results.groups()[1]
+        image = Image.open(BytesIO(base64.b64decode(image_base64))).convert("RGB")
     return image
-
-
-def load_images(image_files):
-    out = []
-    for image_file in image_files:
-        image = load_image(image_file)
-        out.append(image)
-    return out
 
 
 def center_crop_and_resize(
@@ -125,6 +140,10 @@ def load_model(version, args):
     global tokenizer, model, image_processor, context_len
 
     print("Loading model", version, args.model_path, args.model_base)
+    
+    # Detect device availability
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
 
     # standard model
     if args.model_base is None:
@@ -134,7 +153,7 @@ def load_model(version, args):
             model = llava.load(args.model_path)
         elif version == "vila":
             tokenizer, model, image_processor, context_len = load_pretrained_model(
-                args.model_path, model_name, args.model_base
+                args.model_path, model_name, args.model_base, device=device
             )
         print("standard", args.model_path, args.model_base)
         try:
@@ -149,7 +168,7 @@ def load_model(version, args):
         from peft import PeftModel
 
         tokenizer, base_model, image_processor, context_len = load_pretrained_model(
-            args.model_base, get_model_name_from_path(args.model_base), model_base=None
+            args.model_base, get_model_name_from_path(args.model_base), model_base=None, device=device
         )
 
         model = PeftModel.from_pretrained(base_model, args.model_path)
@@ -200,7 +219,7 @@ def inference_vila(message, args):
     input_ids = (
         tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
         .unsqueeze(0)
-        .cuda()
+        .to(model.device)
     )
 
     # inference
@@ -322,7 +341,7 @@ def inference_vila_perplexity(message, args, target):
     input_ids = (
         tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
         .unsqueeze(0)
-        .cuda()
+        .to(model.device)
     )
 
     # inference
@@ -351,7 +370,7 @@ def inference_vila_perplexity(message, args, target):
     split_tag = "TRAJECTORY"
     target_ids = None
     target_lang = target.split(split_tag)[0].strip()
-    target_ids = tokenizer(target_lang, return_tensors="pt").input_ids.cuda()[:, 1:]
+    target_ids = tokenizer(target_lang, return_tensors="pt").input_ids.to(model.device)[:, 1:]
 
     # find language prediction in output
     full_output_tokens = output_ids[0].cpu().numpy()
@@ -566,6 +585,110 @@ def vila_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="path
     )
 
     return image, path_pred, mask_pred
+
+def inference_hamster(messages, model_args):
+
+
+    from llava.constants import (
+        DEFAULT_IM_END_TOKEN,
+        DEFAULT_IM_START_TOKEN,
+        DEFAULT_IMAGE_TOKEN,
+        IMAGE_PLACEHOLDER,
+        IMAGE_TOKEN_INDEX,
+    )
+    from llava.conversation import SeparatorStyle, conv_templates
+    from llava.mm_utils import KeywordsStoppingCriteria, get_model_name_from_path, process_images, tokenizer_image_token
+
+
+    def normalize_image_tags(qs: str) -> str:
+        image_token_se = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN
+        if IMAGE_PLACEHOLDER in qs:
+            if model.config.mm_use_im_start_end:
+                qs = re.sub(IMAGE_PLACEHOLDER, image_token_se, qs)
+            else:
+                qs = re.sub(IMAGE_PLACEHOLDER, DEFAULT_IMAGE_TOKEN, qs)
+
+        if DEFAULT_IMAGE_TOKEN not in qs:
+            print("No image was found in input messages. Continuing with text only prompt.")
+        return qs
+
+    max_tokens = model_args.max_new_tokens
+    # temperature = request.temperature
+    # top_p = request.top_p
+    # num_beams = request.num_beams
+    # use_cache = request.use_cache
+    use_cache = True
+
+    # messages = request.messages
+    conv_mode = model_args.conv_mode
+
+    images = []
+
+    conv = conv_templates[conv_mode].copy()
+    user_role = conv.roles[0]
+    assistant_role = conv.roles[1]
+
+    for message in messages:
+        if message.role == "user":
+            prompt = ""
+
+            if isinstance(message.content, str):
+                prompt += message.content
+            if isinstance(message.content, list):
+                for content in message.content:
+                    if content.type == "text":
+                        prompt += content.text
+                    if content.type == "image_url":
+                        image = load_image(content.image_url.url)
+                        images.append(image)
+                        prompt += IMAGE_PLACEHOLDER
+
+            normalized_prompt = normalize_image_tags(prompt)
+            conv.append_message(user_role, normalized_prompt)
+        if message.role == "assistant":
+            prompt = message.content
+            conv.append_message(assistant_role, prompt)
+
+    prompt_text = conv.get_prompt()
+    print("Prompt input: ", prompt_text)
+
+    # support generation with text only inputs
+    if len(images) == 0:
+        images_input = None
+    else:
+        images_tensor = process_images(images, image_processor, model.config).to(model.device, dtype=torch.float16)
+        images_input = [images_tensor]
+
+    input_ids = (
+        tokenizer_image_token(prompt_text, tokenizer, IMAGE_TOKEN_INDEX, return_tensors="pt")
+        .unsqueeze(0)
+        .to(model.device)
+    )
+
+    stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
+    keywords = [stop_str]
+    stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
+
+    with torch.inference_mode():
+        output_ids = model.generate(
+            input_ids,
+            images=images_input,
+            # do_sample=True if temperature > 0 else False,
+            # temperature=temperature,
+            # top_p=top_p,
+            # num_beams=num_beams,
+            max_new_tokens=max_tokens,
+            use_cache=use_cache,
+            stopping_criteria=[stopping_criteria],
+        )
+
+    outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0]
+    outputs = outputs.strip()
+    if outputs.endswith(stop_str):
+        outputs = outputs[: -len(stop_str)]
+    outputs = outputs.strip()
+    
+    return outputs
 
 
 

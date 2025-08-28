@@ -21,13 +21,7 @@ def get_prompt(quest, prompt_type, history=None, prompt_eval=False):
         prompt = f"Identify some points in the free space on the {quest}. Your answer should be formatted as a list of tuples, i.e. [(x1, y1), (x2, y2), ...], where each tuple contains the x and y coordinates of a point satisfying the conditions above. The coordinates should be between 0 and 1, indicating the normalized pixel locations of the points in the image."
     elif prompt_type == "hamster":
         # https://github.com/liyi14/HAMSTER_beta/blob/526a37f59f97c445005fcdf28f2cfb81ea742e4b/gradio_server_example.py#L159
-        prompt = f"\nIn the image, please execute the command described in <quest>{quest}</quest>.\n"
-        "Provide a sequence of points denoting the trajectory of a robot gripper to achieve the goal.\n"
-        "Format your answer as a list of tuples enclosed by <ans> and </ans> tags. For example:\n"
-        "<ans>[(0.25, 0.32), (0.32, 0.17), (0.13, 0.24), <action>Open Gripper</action>, (0.74, 0.21), <action>Close Gripper</action>, ...]</ans>\n"
-        "The tuple denotes point x and y location of the end effector in the image. The action tags indicate gripper actions.\n"
-        "Coordinates should be floats between 0 and 1, representing relative positions.\n"
-        "Remember to provide points between <ans> and </ans> tags and think step by step."
+        prompt = f"\nIn the image, please execute the command described in <quest>{quest}</quest>.\nProvide a sequence of points denoting the trajectory of a robot gripper to achieve the goal.\nFormat your answer as a list of tuples enclosed by <ans> and </ans> tags. For example:\n<ans>[(0.25, 0.32), (0.32, 0.17), (0.13, 0.24), <action>Open Gripper</action>, (0.74, 0.21), <action>Close Gripper</action>, ...]</ans>\nThe tuple denotes point x and y location of the end effector in the image. The action tags indicate gripper actions.\nCoordinates should be floats between 0 and 1, representing relative positions.\nRemember to provide points between <ans> and </ans> tags and think step by step."
     
     else:
         raise NotImplementedError(f"Prompt type {prompt_type} not implemented.")

@@ -37,8 +37,8 @@ def annotate_image(image, quest):
 def draw_lines_on_image_cv(image, points, draw_action=False, num_subdivisions=100):
     height, width, _ = image.shape
 
-    # Calculate a scale factor relative to a 512x512 image
-    scale_factor = max(min(width, height) / 512.0, 1)
+    # Calculate a scale factor relative to a 256x256 image -> original was 512x512 but w/ 128x128 gripper actions is not visible
+    scale_factor = min(min(width, height) / 256.0, 1)
     circle_radius = int(7 * scale_factor)
     circle_thickness = max(1, int(2 * scale_factor))
     line_thickness = max(1, int(2 * scale_factor))
@@ -213,6 +213,6 @@ def hamster_inference_api(rgb, lang_instr, model_name, server_ip, prompt_type="h
     response_text_strip = re.search(r'<ans>(.*?)</ans>', answer_pred, re.DOTALL).group(1)
     points = process_answer(response_text_strip)
     output_image = draw_lines_on_image_cv(rgb.copy(), points, draw_action=True)
-    annotated_image = annotate_image(output_image.copy(), lang_instr)
+    # annotated_image = annotate_image(output_image.copy(), lang_instr)
 
-    return annotated_image, points, None
+    return output_image, points
