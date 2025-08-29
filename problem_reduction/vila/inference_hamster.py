@@ -34,11 +34,11 @@ def annotate_image(image, quest):
     
     return image
 
-def draw_lines_on_image_cv(image, points, draw_action=False, num_subdivisions=100):
+def draw_lines_on_image_cv(image, points, draw_action=False, num_subdivisions=100, scale_factor=1.):
     height, width, _ = image.shape
 
     # Calculate a scale factor relative to a 256x256 image -> original was 512x512 but w/ 128x128 gripper actions is not visible
-    scale_factor = min(min(width, height) / 256.0, 1)
+    # scale_factor = min(min(width, height) / 256.0, 1)
     circle_radius = int(7 * scale_factor)
     circle_thickness = max(1, int(2 * scale_factor))
     line_thickness = max(1, int(2 * scale_factor))
@@ -52,9 +52,10 @@ def draw_lines_on_image_cv(image, points, draw_action=False, num_subdivisions=10
     for point in points:
         x = int(point[0] * width)
         y = int(point[1] * height)
-        action = int(point[2])
         pixel_points.append((x, y))
-        gripper_status.append(action)
+        if draw_action:
+            action = int(point[2])
+            gripper_status.append(action)
 
     # Draw optional markers or numbers at the predicted points
     for idx, (x, y) in enumerate(pixel_points):

@@ -148,6 +148,7 @@ def train(
                 obs_mask_w_path=model_config.obs_mask_w_path,
                 mask_pixels=model_config.mask_pixels,
                 obs_gt=model_config.obs_gt,
+                rainbow_path=model_config.rainbow_path,
                 action_space=model_config.action_space,
                 device=device,
             )
@@ -258,7 +259,7 @@ def train(
         )
 
         # compute eval metrics
-        if epoch % model_config.eval_every_n_epochs == 0 and epoch > 0:
+        if False: #epoch % model_config.eval_every_n_epochs == 0 and epoch > 0:
         # if epoch > 300 and model_config.eval_every_n_epochs == 0 and epoch > 0:
             test_losses = {
                 "total_loss": [],
@@ -293,6 +294,7 @@ def train(
                     obs_mask_w_path=model_config.obs_mask_w_path,
                     mask_pixels=model_config.mask_pixels,
                     obs_gt=model_config.obs_gt,
+                    rainbow_path=model_config.rainbow_path,
                     action_space=model_config.action_space,
                     device=device,
                 )
@@ -376,7 +378,9 @@ def train(
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 obs_mask_w_path=model_config.obs_mask_w_path,
+                obs_hamster=model_config.obs_hamster,
                 mask_pixels=model_config.mask_pixels,
+                rainbow_path=model_config.rainbow_path,
                 obs_gt=model_config.obs_gt,
                 server_ip_vlm=server_ip_vlm,
                 model_name_vlm=model_name_vlm,
@@ -633,6 +637,11 @@ if __name__ == "__main__":
         help="mask pixels",
     )
     parser.add_argument(
+        "--rainbow_path",
+        action="store_true",
+        help="rainbow path",
+    )
+    parser.add_argument(
         "--loss_weights",
         type=float,
         nargs="+",
@@ -697,6 +706,7 @@ if __name__ == "__main__":
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
         "obs_mask_w_path": args.obs_mask_w_path,
+        "rainbow_path": args.rainbow_path,
         "mask_pixels": args.mask_pixels,
         "obs_gt": args.obs_gt,
         "obs_hamster": args.obs_hamster,
@@ -715,7 +725,7 @@ if __name__ == "__main__":
     ]
 
     # set path/mask keys depending on whether to use gt or vlm generated predictions
-    if model_config.obs_path:
+    if model_config.obs_path or model_config.obs_hamster:
         low_dim_keys.append("path" if model_config.obs_gt else "path_vlm")
     if model_config.obs_mask:
         low_dim_keys.append("mask" if model_config.obs_gt else "mask_vlm")

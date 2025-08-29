@@ -73,6 +73,7 @@ def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, 
         print("Querying VLM at timestep", timestep, "...")
         if obs_hamster:
             image, path_pred = hamster_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="hamster")
+            path_pred = np.array(path_pred)
             mask_pred = np.zeros_like(path_pred)
         else:
             image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
@@ -84,7 +85,7 @@ def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, 
             "mask_pred": mask_pred,
         }
     
-    if obs_path:
+    if obs_path or obs_hamster:
         obs["path_vlm"] = vlm_cache["path_pred"]
         obs["path"] = vlm_cache["path_pred"]
     if obs_mask:
@@ -112,6 +113,7 @@ def eval_3dda(
     obs_path=False,
     obs_mask=False,
     obs_mask_w_path=False,
+    rainbow_path=False,
     obs_gt=False,
     obs_hamster=False,
     mask_pixels=10,
@@ -251,12 +253,12 @@ def eval_3dda(
                 k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
             }
 
-        if server_ip_vlm is None and (obs_path or obs_mask or obs_mask_w_path):
-            if obs_path:
+        if server_ip_vlm is None and (obs_path or obs_mask or obs_mask_w_path or obs_hamster):
+            if obs_path or obs_hamster:
                 obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
             if obs_mask or obs_mask_w_path:
                 obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]
-        elif obs_path or obs_mask or obs_mask_w_path:
+        elif obs_path or obs_mask or obs_mask_w_path or obs_hamster:
             # initial vlm predictions and cache
             obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path, obs_hamster=obs_hamster)
         
@@ -295,6 +297,7 @@ def eval_3dda(
                     obs_mask=obs_mask,
                     obs_mask_w_path=obs_mask_w_path,
                     obs_hamster=obs_hamster,
+                    rainbow_path=rainbow_path,
                     mask_pixels=mask_pixels,
                     obs_outlier=False, # real,
                     obs_gt=obs_gt,
@@ -302,7 +305,7 @@ def eval_3dda(
                     action_space=model_config.action_space,
                 )
 
-                if obs_path:
+                if obs_path or obs_hamster:
                     rgb_obs = (
                         batch_prepared["rgb_obs"][0, 0].permute(1, 2, 0).cpu().numpy()
                         * 255.0
@@ -348,7 +351,7 @@ def eval_3dda(
                         if k in env_config["obs_keys"]
                     }
                 if server_ip_vlm is None and (obs_path or obs_mask or obs_mask_w_path):
-                    if obs_path:
+                    if obs_path or obs_hamster:
                         obs["path" if obs_gt else "path_vlm"] = open_loop_obs["path" if obs_gt else "path_vlm"][0]
                     if obs_mask or obs_mask_w_path:
                         obs["mask" if obs_gt else "mask_vlm"] = open_loop_obs["mask" if obs_gt else "mask_vlm"][0]

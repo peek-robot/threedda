@@ -1,0 +1,17 @@
+
+
+CUDA_VISIBLE_DEVICES=1 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --obs_mask_w_path --fps_subsampling_factor 5 --model_name_vlm vila_3b_path_mask_fast --server_ip_vlm http://0.0.0.0:8000 --name ee_mask_w_path_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_path_mask_noise_std 0.01 --mask_pixels 15 --resume
+
+CUDA_VISIBLE_DEVICES=1 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --obs_mask --fps_subsampling_factor 5 --model_name_vlm vila_3b_path_mask_fast --server_ip_vlm http://0.0.0.0:8000 --name ee_mask_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_path_mask_noise_std 0.01 --mask_pixels 15 --resume
+
+CUDA_VISIBLE_DEVICES=1 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --obs_path --obs_mask_w_path --fps_subsampling_factor 5 --model_name_vlm vila_3b_path_mask_fast --server_ip_vlm http://0.0.0.0:8000 --name ee_path_mask_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_path_mask_noise_std 0.01 --mask_pixels 15 --resume
+
+CUDA_VISIBLE_DEVICES=0 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --fps_subsampling_factor 5 --model_name_vlm vila_3b_path_mask_fast --server_ip_vlm http://0.0.0.0:8000 --name ee_lang_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_path_mask_noise_std 0.01 --mask_pixels 15 --resume
+
+CUDA_VISIBLE_DEVICES=0 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --obs_path --fps_subsampling_factor 5 --model_name_vlm vila_3b_path_mask_fast --server_ip_vlm http://0.0.0.0:8000 --name ee_path_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_path_mask_noise_std 0.01 --mask_pixels 15 --resume
+
+
+
+CUDA_VISIBLE_DEVICES=0 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee_hamster.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --fps_subsampling_factor 5 --model_name_vlm hamster_13b --server_ip_vlm https://edclduajln.a.pinggy.link --name ee_hamster_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_hamster --obs_path_mask_noise_std 0.01 --resume
+
+CUDA_VISIBLE_DEVICES=1 python scripts/threedda/run_3dda.py --dataset data/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --augment_pcd --augment_rgb --obs_noise_std 0.01 --num_epochs 1500 --task pick_and_place --fps_subsampling_factor 5 --model_name_vlm vila_3b_path_mask_fast --server_ip_vlm https://edclduajln.a.pinggy.link --name ee_path_rainbow_detail --history 1 --obs_continuous_gripper --action_space abs_ee --obs_path --rainbow_path --obs_path_mask_noise_std 0.01 --resume
