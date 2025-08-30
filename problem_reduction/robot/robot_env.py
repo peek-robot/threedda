@@ -659,8 +659,18 @@ class CubeEnv(RobotEnv):
             obj_poses = self.get_obj_poses()
             return obj_poses[2] > 0.1
         elif task == "pick_and_place":
-            # cubes aligned & first (pick) one above second (place)one
+            # cubes aligned & first (pick) one above second (place) one
             obj_poses = self.get_obj_poses()
-            return np.sum(np.abs(obj_poses[:2] - obj_poses[7:9])) < self.obj_size and obj_poses[2] > obj_poses[9]
+
+            x_aligned = np.abs(obj_poses[0] - obj_poses[7]) < self.obj_size
+            y_aligned = np.abs(obj_poses[1] - obj_poses[8]) < self.obj_size
+            
+            z_distance = (obj_poses[2] - obj_poses[9])
+            margin = 0.005
+            z_stacked = z_distance < 2*self.obj_size + margin and z_distance > 2*self.obj_size - margin
+
+            gripper_open = self.get_gripper_state_discrete()[0] == 1.0
+            
+            return x_aligned and y_aligned and z_stacked and gripper_open
         else:
             raise ValueError(f"Invalid task: {task}")
