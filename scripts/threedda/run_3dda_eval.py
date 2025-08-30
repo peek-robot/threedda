@@ -122,6 +122,7 @@ def eval_3dda(
     server_ip_vlm=None,
     update_every_timesteps_vlm=32,
     real=False,
+    seed=1,
 ):
     
     if mode == "open_loop":
@@ -145,7 +146,7 @@ def eval_3dda(
         )
 
     # set to ood seed if not using path or mask
-    seed = env_config["seed"] + 1
+    combined_seed = env_config["seed"] + 1 + seed
 
     to_be_replaced = "/home/memmelma/Projects/robotic/franka_emika_panda"
     if to_be_replaced in env_config["xml_path"]:
@@ -219,7 +220,7 @@ def eval_3dda(
             #     import IPython; IPython.embed()
         else:
             env = CubeEnv(**env_config)
-            env.seed(seed + i)
+            env.seed(combined_seed + i)
 
         obs = env.reset()
 

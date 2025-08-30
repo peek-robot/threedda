@@ -33,6 +33,7 @@ from problem_reduction.threedda.data import prepare_batch
 from problem_reduction.threedda.vis_utils import plot_actions_and_log_wandb
 
 import json
+import random
 
 import robomimic.utils.train_utils as TrainUtils
 import robomimic.utils.file_utils as FileUtils
@@ -41,6 +42,12 @@ from robomimic.config import config_factory
 
 from torch.utils.data import DataLoader
 
+def seed_everything(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 def get_dataloaders_from_mimic(config):
 
@@ -112,7 +119,7 @@ def train(
     train_loader_iter = iter(train_loader)
     test_loader_iter = iter(test_loader)
 
-    for epoch in range(start_epoch, model_config.num_epochs):
+    for epoch in range(start_epoch, model_config.num_epochs + 1):
         train_losses = {}
 
         for _ in trange(
@@ -357,7 +364,7 @@ def train(
             eval_mode = "closed_loop"
             
             if task == "pick_and_place":
-                n_rollouts = 25 # 10
+                n_rollouts = 25
                 n_steps = 128
             elif task == "pick":
                 n_rollouts = 16
@@ -385,6 +392,7 @@ def train(
                 server_ip_vlm=server_ip_vlm,
                 model_name_vlm=model_name_vlm,
                 update_every_timesteps_vlm=update_every_timesteps_vlm,
+                seed=model_config.seed,
             )
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
@@ -648,6 +656,12 @@ if __name__ == "__main__":
         default=[30., 10., 1.],
         help="loss weights",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1,
+        help="seed",
+    )
     # parse arguments
     args = parser.parse_args()
 
@@ -656,6 +670,9 @@ if __name__ == "__main__":
         args.resume = False
         args.epoch_every_n_steps = 3
         args.eval_every_n_epochs = 1
+
+    args.name = f"{args.name}_{args.seed}"
+    seed_everything(args.seed)
 
     print(json.dumps(vars(args)))
 
@@ -713,6 +730,7 @@ if __name__ == "__main__":
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
         "high_res_features": args.high_res_features,
+        "seed": args.seed,
     }
     model_config = Namespace(**model_config)
 
@@ -780,7 +798,7 @@ if __name__ == "__main__":
             "cuda": True,
             "batch_size": model_config.batch_size,
             "num_epochs": model_config.num_epochs,
-            "seed": 1,
+            "seed": model_config.seed,
         },
     }
     mimic_config = config_factory("bc")
