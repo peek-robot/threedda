@@ -41,8 +41,8 @@ class ChatMessage(BaseModel):
     content: Union[str, List[Union[TextContent, ImageContent]]]
     
 class ChatCompletionRequest(BaseModel):
-    model: Literal["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast", "hamster_13b"]
-    prompt_type: Literal["path_mask", "robotpoint", "hamster"]
+    model: Literal["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast", "hamster_13b", "abl_vila_3b_path_fulltraj"]
+    prompt_type: Literal["path_mask", "robotpoint", "hamster", "path"]
     messages: List[ChatMessage]
     max_tokens: Optional[int] = 1024
     top_p: Optional[float] = 0.9
@@ -136,6 +136,9 @@ async def chat_completions(request: ChatCompletionRequest):
         if request.prompt_type == "hamster":
             assert request.model == "hamster_13b"
             answer_pred = hamster_completions(request)
+        elif request.prompt_type == "path":
+            assert request.model in ["abl_vila_3b_path_fulltraj"]
+            answer_pred = vila_completions(request)
         elif request.prompt_type == "path_mask":
             assert request.model in ["vila_3b_blocks_path_mask_fast", "vila_3b_path_mask_fast"]
             answer_pred = vila_completions(request)

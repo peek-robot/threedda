@@ -75,6 +75,8 @@ def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, 
             image, path_pred = hamster_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="hamster")
             path_pred = np.array(path_pred)
             mask_pred = np.zeros_like(path_pred)
+        elif model_name == "abl_vila_3b_path_fulltraj":
+            image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path")
         else:
             image, path_pred, mask_pred = vila_inference_api(obs["rgb"], instructions[-1], model_name=model_name, server_ip=server_ip, prompt_type="path_mask")
         
