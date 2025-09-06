@@ -389,6 +389,7 @@ def train(
                 mask_pixels=model_config.mask_pixels,
                 rainbow_path=model_config.rainbow_path,
                 obs_gt=model_config.obs_gt,
+                obs_exp_mask=model_config.obs_exp_mask,
                 server_ip_vlm=server_ip_vlm,
                 model_name_vlm=model_name_vlm,
                 update_every_timesteps_vlm=update_every_timesteps_vlm,
@@ -544,6 +545,11 @@ if __name__ == "__main__":
         "--obs_hamster",
         action="store_true",
         help="use hamster",
+    )
+    parser.add_argument(
+        "--obs_exp_mask",
+        action="store_true",
+        help="use explicit mask",
     )
     parser.add_argument(
         "--obs_noise_std",
@@ -723,6 +729,7 @@ if __name__ == "__main__":
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
         "obs_mask_w_path": args.obs_mask_w_path,
+        "obs_exp_mask": args.obs_exp_mask,
         "rainbow_path": args.rainbow_path,
         "mask_pixels": args.mask_pixels,
         "obs_gt": args.obs_gt,

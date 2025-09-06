@@ -6,6 +6,7 @@ import os
 import numpy as np
 from tqdm import trange
 import matplotlib.pyplot as plt
+from PIL import Image
 
 from problem_reduction.threedda.text_embed import CLIPTextEmbedder
 from problem_reduction.threedda.data import prepare_batch
@@ -95,7 +96,57 @@ def add_vlm_predictions(obs, instructions, timestep, update_every_timesteps=15, 
         obs["mask"] = vlm_cache["mask_pred"]
 
     return obs, vlm_cache, vlm_cache_step
-    
+
+from problem_reduction.masking.groundedsam_zmq_client import GroundedSam2TrackerClient
+client = None
+
+def _apply_masks_to_frames(frames, masks_list):
+    """
+    frames: list of PIL.Image or np.ndarray [H,W,3]
+    masks_list: list of torch.BoolTensor or np.ndarray [N,H,W]
+    returns: list of np.ndarray frames with masks applied
+    """
+    out_frames = []
+    for frame, masks in zip(frames, masks_list):
+        if not isinstance(frame, np.ndarray):
+            frame = np.array(frame)
+        if hasattr(masks, "numpy"):  # torch.Tensor
+            masks = masks.cpu().numpy()
+        masks = masks.squeeze(1)
+        if masks.ndim == 3:  # multiple objects -> combine
+            mask = np.any(masks, axis=0)
+        else:
+            mask = masks
+
+        mask3 = np.repeat(mask[..., None], 3, axis=-1)
+        out = frame * mask3
+
+        out_frames.append(out.astype(np.uint8))
+    return out_frames
+
+def instruction_to_dino_instr(instruction):
+    # split objects and add gripper
+    objects = instruction.replace("put the ", "").split(" on the ") + ["gripper."]
+    # add "a " prefix to each object
+    objects = ["a " + o for o in objects]
+    # separate objects with ". "
+    dino_instr = ". ".join(objects)
+    return dino_instr
+
+def add_exp_mask_predictions(obs, instructions, reset=False, server_addr="tcp://127.0.0.1:5555"):
+
+    global client
+    if client is None:
+        client = GroundedSam2TrackerClient(server_addr)
+    if reset:
+        client.reset(init_frame=Image.fromarray(obs["rgb"]), text=instruction_to_dino_instr(instructions[-1]))
+    idx, masks = client.step(Image.fromarray(obs["rgb"]))
+
+    obs["rgb"] = _apply_masks_to_frames([obs["rgb"]], [masks])[0]
+    obs["depth"] = _apply_masks_to_frames([obs["depth"][...,None]], [masks])[0][...,0]
+
+    return obs
+
 def eval_3dda(
     task,
     data_path,
@@ -115,6 +166,7 @@ def eval_3dda(
     obs_path=False,
     obs_mask=False,
     obs_mask_w_path=False,
+    obs_exp_mask=False,
     rainbow_path=False,
     obs_gt=False,
     obs_hamster=False,
@@ -264,6 +316,8 @@ def eval_3dda(
         elif obs_path or obs_mask or obs_mask_w_path or obs_hamster:
             # initial vlm predictions and cache
             obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=0, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path, obs_hamster=obs_hamster)
+        elif obs_exp_mask:
+            obs = add_exp_mask_predictions(obs, instructions, reset=True)
         
         framestack.reset()
         framestack.add_obs(obs)
@@ -367,6 +421,9 @@ def eval_3dda(
                         obs["rgb"] = env.get_obs()["rgb"]
                     # update vlm predictions and cache -> only compute new path/mask predictions every 15 steps
                     obs, vlm_cache, vlm_cache_step = add_vlm_predictions(obs, instructions, timestep=j*action_chunk_size, update_every_timesteps=update_every_timesteps_vlm, model_name=model_name_vlm, server_ip=server_ip_vlm, obs_path=obs_path, obs_mask=obs_mask or obs_mask_w_path, vlm_cache=vlm_cache, vlm_cache_step=vlm_cache_step)
+                
+                elif obs_exp_mask:
+                    obs = add_exp_mask_predictions(obs, instructions, reset=False)
 
                 framestack.add_obs(obs)
                 if not real:
@@ -439,6 +496,7 @@ if __name__ == "__main__":
     parser.add_argument("--obs_mask", action="store_true", help="Use mask observations")
     parser.add_argument("--obs_mask_w_path", action="store_true", help="Use mask observations with path")
     parser.add_argument("--obs_hamster", action="store_true", help="Use hamster observations")
+    parser.add_argument("--obs_exp_mask", action="store_true", help="Use explicit mask observations")
     parser.add_argument("--server_ip_vlm", type=str, default=None)
     parser.add_argument("--update_every_timesteps_vlm", type=int, default=32)
     parser.add_argument("--results_dir", type=str, default="results")
@@ -464,6 +522,7 @@ if __name__ == "__main__":
         obs_mask=args.obs_mask,
         obs_mask_w_path=args.obs_mask_w_path,
         obs_hamster=args.obs_hamster,
+        obs_exp_mask=args.obs_exp_mask,
         server_ip_vlm=args.server_ip_vlm,
         real=args.real,
         update_every_timesteps_vlm=args.update_every_timesteps_vlm,

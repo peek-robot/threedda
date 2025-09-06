@@ -11,6 +11,15 @@ import imageio
 from problem_reduction.threedda.text_embed import CLIPTextEmbedder
 from problem_reduction.masking.groundedsam import GroundedSam2Tracker
 
+def instruction_to_dino_instr(instruction):
+    # split objects and add gripper
+    objects = instruction.replace("put the ", "").split(" on the ") + ["gripper."]
+    # add "a " prefix to each object
+    objects = ["a " + o for o in objects]
+    # separate objects with ". "
+    dino_instr = ". ".join(objects)
+    return dino_instr
+
 if __name__ == "__main__":
 
     import argparse
@@ -33,14 +42,11 @@ if __name__ == "__main__":
 
             # load data
             rgbs = file[dk]["obs"]["rgb"][:]
+            depths = file[dk]["obs"]["depth"][:]
             lang_instr = file[dk]["obs"].attrs["lang_instr"]
 
-            # split objects and add gripper
-            objects = lang_instr.replace("put the ", "").split(" on the ") + ["gripper."]
-            # add "a " prefix to each object
-            objects = ["a " + o for o in objects]
-            # separate objects with ". "
-            dino_instr = ". ".join(objects)
+            dino_instr = instruction_to_dino_instr(lang_instr)
+
             tracker.reset(init_frame=Image.fromarray(rgbs[0]), text=dino_instr)
 
             # track masks
@@ -51,9 +57,11 @@ if __name__ == "__main__":
 
             # apply masks
             rgbs_masked = tracker.apply_masks_to_frames(rgbs, masks_list)
+            depth_masked = tracker.apply_masks_to_frames(depths[...,None], masks_list)
 
             # save data
-            file[dk]["obs"]["rgb"][:] = rgbs_masked
+            file[dk]["obs"]["rgb"][:] = np.stack(rgbs_masked)
+            file[dk]["obs"]["depth"][:] = np.stack(depth_masked)[...,0]
 
         except Exception as e:
             print(e)
