@@ -167,7 +167,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     
     # WARNING: zero_points with min < -1. will also crop the mask predictions from the colors/rgb!
     if obs_crop:
-        raise NotImplementedError("obs_crop not supported")
+        # raise NotImplementedError("obs_crop not supported")
 
         # # no table surface
         # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
@@ -179,7 +179,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
         points, colors = zero_points(points, colors, crop_min=[0., -0.3, -0.1], crop_max=[0.7, 0.3, 0.8])
     
     if obs_crop_cube:
-        raise NotImplementedError("obs_crop not supported")
+        raise NotImplementedError("obs_crop_cube not supported")
         points, colors = zero_points(points, colors, crop_min=[0.2, -0.3, 0.02], crop_max=[0.7, 0.3, 0.3])
     
     if obs_outlier:
@@ -206,6 +206,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     pcd_obs = points.permute(0, 3, 1, 2).unsqueeze(1).float()
     rgb_obs = colors.permute(0, 3, 1, 2).unsqueeze(1).float() / 255.0
 
+    # import IPython; IPython.embed()
     instruction = sample["obs"]["lang_instr"][:, :, history-1]
     
     trajectory_mask = torch.full((B, horizon, gt_trajectory.shape[-1]), False).float()

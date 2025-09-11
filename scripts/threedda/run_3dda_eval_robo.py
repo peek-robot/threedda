@@ -14,7 +14,10 @@ from problem_reduction.threedda.model import load_checkpoint
 from problem_reduction.threedda.vis_utils import plot_actions
 
 from problem_reduction.robot.wrappers.framestack import FrameStackWrapper
-from problem_reduction.robot.robot_env import CubeEnv
+# from problem_reduction.robot.robot_env import CubeEnv
+
+from tool_use.envs import make_env
+
 from problem_reduction.utils.normalize import denormalize
 
 from problem_reduction.vila.inference_helpers import vila_inference_api
@@ -191,23 +194,24 @@ def eval_3dda(
     clip_embedder = CLIPTextEmbedder()
     clip_embedder = clip_embedder.to(device)
 
-    # load env + normalization data
-    with h5py.File(data_path, "r", swmr=True) as f:
-        env_config = json.loads(f["data"].attrs["env_args"])["env_kwargs"]
-        action_min, action_max = (
-            f["data"].attrs["actions_min"],
-            f["data"].attrs["actions_max"],
-        )
+    # # load env + normalization data
+    # with h5py.File(data_path, "r", swmr=True) as f:
+    #     env_config = json.loads(f["data"].attrs["env_args"])["env_kwargs"]
+    #     action_min, action_max = (
+    #         f["data"].attrs["actions_min"],
+    #         f["data"].attrs["actions_max"],
+    #     )
 
     # set to ood seed if not using path or mask
-    combined_seed = env_config["seed"] + 1 + seed
+    # combined_seed = env_config["seed"] + 1 + seed
+    combined_seed = 1 + seed
 
-    to_be_replaced = "/home/memmelma/Projects/robotic/franka_emika_panda"
-    if to_be_replaced in env_config["xml_path"]:
-        env_config["xml_path"] = env_config["xml_path"].replace(
-            to_be_replaced,
-            "/gscratch/weirdlab/memmelma/simvla/pick_data_gen/franka_emika_panda",
-        )
+    # to_be_replaced = "/home/memmelma/Projects/robotic/franka_emika_panda"
+    # if to_be_replaced in env_config["xml_path"]:
+    #     env_config["xml_path"] = env_config["xml_path"].replace(
+    #         to_be_replaced,
+    #         "/gscratch/weirdlab/memmelma/simvla/pick_data_gen/franka_emika_panda",
+    #     )
     
     # init framestack
     num_frames = model_config.history
@@ -273,8 +277,15 @@ def eval_3dda(
             #     visualize_pointcloud(env, data_path)
             #     import IPython; IPython.embed()
         else:
-            env = CubeEnv(**env_config)
-            env.seed(combined_seed + i)
+            import hydra
+            from omegaconf import OmegaConf
+            cfg = "/home/memmelma/Projects/tool_use/tool_use/configs/env/pnp_joint.yaml"
+            with open(cfg, "r") as f:
+                cfg_yaml = f.read()
+            hydra_cfg = OmegaConf.create(cfg_yaml)
+            cfg_dict = OmegaConf.to_container(hydra_cfg, resolve=True)
+            
+            env = make_env(**cfg_dict, camera_names=["sim2real"], render=True, render_depth=True, resolution=128, ignore_done=False, hard_reset=True, seed=combined_seed + i)
 
         obs = env.reset()
 
@@ -285,9 +296,15 @@ def eval_3dda(
             env.set_obj_poses(obj_pose)
             env.set_obj_colors(obj_color)
 
-        obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
+        try:
+            obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
+        except:
+            obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_str"])
 
-        instructions.append(env.get_lang_instr())
+        try:
+            instructions.append(env.get_lang_instr())
+        except:
+            instructions.append(env.lang_instr)
 
         # # HACK swap in real observations
         # data_path = "fullrollout.hdf5"
@@ -301,12 +318,8 @@ def eval_3dda(
         # Example:
         # python run_3dda_eval.py --name 3dda_low_res_fast_fps_2_h_2 --mode open_loop --n_steps 2 --ckpt best --dataset gifs_curobo/pick_1000_1_objs_128_s2r.hdf5 --n_rollouts 1
 
-        # imgs = [obs["rgb"]]
-        imgs = [np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1)]
-        if mode == "open_loop":
-            obs = {
-                k: v[0] for k, v in open_loop_obs.items() if k in env_config["obs_keys"]
-            }
+        # imgs = [np.concatenate([obs["rgb"], env.get_obs()["rgb"]], axis=1)]
+        imgs = [obs["rgb"]]
 
         if server_ip_vlm is None and (obs_path or obs_mask or obs_mask_w_path or obs_hamster):
             if obs_path or obs_hamster:
@@ -320,6 +333,7 @@ def eval_3dda(
             obs = add_exp_mask_predictions(obs, instructions, reset=True)
         
         framestack.reset()
+        del obs["lang_str"]
         framestack.add_obs(obs)
 
         pred_actions = []
@@ -382,24 +396,40 @@ def eval_3dda(
                     chunk_size = 1
                 for i, act in enumerate(acts[0].cpu().numpy()[:chunk_size]):
                     # discretize gripper action to ensure gripper_state is (0., 1.) as during data gen
-                    act[7] = 1.0 if act[7] > 0.5 else 0.0
+
+                    # PnP maps [-1, 1] -> [1, 0], so invert accordingly
+                    if real:
+                        act[7] = 1.0 if act[7] > 0.5 else 0.0
+                    else:
+                        act[7] = -1.0 if act[7] > 0.5 else 1.0
+
                     act_queue.append(act)
 
             for t, act in zip(reversed(range(len(act_queue))), act_queue):
                 pred_actions.append(act)
                 
-                obs_keys_copy = env.obs_keys.copy()
+                if real:
+                    obs_keys_copy = env.obs_keys.copy()
                 # only render depth for history in real to speed up inference
                 if real and t >= model_config.history:
                     env.obs_keys.remove("rgb")
                     env.obs_keys.remove("depth")
                     env.obs_keys.remove("camera_intrinsic")
                     env.obs_keys.remove("camera_extrinsic")
-                    
-                obs, r, done, info = env.step(act)
-                env.obs_keys = obs_keys_copy
 
-                obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
+                if not real:
+                    # 3dda predicts ee_pose -> convert to joint pos since sim runs JOINT_POSITION controller
+                    qpos = env.mink.compute_ik(act[:3], act[3:7], obs["qpos"].flatten())
+                    act = np.concatenate([qpos, act[7:]])
+
+                obs, r, done, info = env.step(act)
+                if real:
+                    env.obs_keys = obs_keys_copy
+
+                try:
+                    obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_instr"])
+                except:
+                    obs["lang_instr"] = clip_embedder.embed_instruction(obs["lang_str"])
 
                 if mode == "open_loop":
                     obs = {
@@ -425,6 +455,7 @@ def eval_3dda(
                 elif obs_exp_mask:
                     obs = add_exp_mask_predictions(obs, instructions, reset=False)
 
+                del obs["lang_str"]
                 framestack.add_obs(obs)
                 if not real:
                     if "rgb" in obs.keys():
@@ -432,7 +463,7 @@ def eval_3dda(
                     else:
                         imgs.append(env.get_obs()["rgb"])
 
-                success = env.is_success(task=task)
+                success = env._check_success()
                 if success:
                     break
             if success:
@@ -447,21 +478,21 @@ def eval_3dda(
         if ckpt_path is not None and (mode == "open_loop" or mode == "replay"):
             save_dir = os.path.join(os.path.dirname(ckpt_path), mode)
             os.makedirs(save_dir, exist_ok=True)
-            plot_actions(
-                np.stack(pred_actions),
-                denormalize(open_loop_actions, min=action_min, max=action_max),
-                file_name=os.path.join(save_dir, f"img_{i}"),
-                act_dim_labels=[
-                    "joint0",
-                    "joint1",
-                    "joint2",
-                    "joint3",
-                    "joint4",
-                    "joint5",
-                    "joint6",
-                    "grasp",
-                ],
-            )
+            # plot_actions(
+            #     np.stack(pred_actions),
+            #     denormalize(open_loop_actions, min=action_min, max=action_max),
+            #     file_name=os.path.join(save_dir, f"img_{i}"),
+            #     act_dim_labels=[
+            #         "joint0",
+            #         "joint1",
+            #         "joint2",
+            #         "joint3",
+            #         "joint4",
+            #         "joint5",
+            #         "joint6",
+            #         "grasp",
+            #     ],
+            # )
 
     print(
         f"{mode} {'act chunking' if action_chunking else ''} Success rate: {np.mean(successes)}"

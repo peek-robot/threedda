@@ -20,7 +20,6 @@ import torchvision
 
 import wandb
 from torch.utils.data import DataLoader
-from run_3dda_eval import eval_3dda
 
 from problem_reduction.threedda.criterion import TrajectoryCriterion
 from problem_reduction.threedda.model import (
@@ -117,7 +116,9 @@ def train(
 
     criterion = TrajectoryCriterion()
     train_loader_iter = iter(train_loader)
-    test_loader_iter = iter(test_loader)
+
+    if test_loader is not None:
+        test_loader_iter = iter(test_loader)
 
     for epoch in range(start_epoch, model_config.num_epochs + 1):
         train_losses = {}
@@ -363,38 +364,67 @@ def train(
             
             eval_mode = "closed_loop"
             
-            if task == "pick_and_place":
-                n_rollouts = 25
-                n_steps = 128
-            elif task == "pick":
-                n_rollouts = 16
-                n_steps = 72
-            else:
-                raise ValueError(f"Invalid task: {task}")
-            
-            successes, videos, instructions = eval_3dda(
-                task=task,
-                policy=model,
-                model_config=model_config,
-                data_path=dataset,
-                mode=eval_mode,
-                action_chunking=True,
-                action_chunk_size=8,
-                n_rollouts=n_rollouts,
-                n_steps=n_steps,
-                obs_path=model_config.obs_path,
-                obs_mask=model_config.obs_mask,
-                obs_mask_w_path=model_config.obs_mask_w_path,
-                obs_hamster=model_config.obs_hamster,
-                mask_pixels=model_config.mask_pixels,
-                rainbow_path=model_config.rainbow_path,
-                obs_gt=model_config.obs_gt,
-                obs_exp_mask=model_config.obs_exp_mask,
-                server_ip_vlm=server_ip_vlm,
-                model_name_vlm=model_name_vlm,
-                update_every_timesteps_vlm=update_every_timesteps_vlm,
-                seed=model_config.seed,
-            )
+            if task == "pick_and_place" or task =="pick":
+                if task == "pick_and_place":
+                    n_rollouts = 25
+                    n_steps = 128
+                elif task == "pick":
+                    n_rollouts = 16
+                    n_steps = 72
+
+                from run_3dda_eval import eval_3dda
+                successes, videos, instructions = eval_3dda(
+                    task=task,
+                    policy=model,
+                    model_config=model_config,
+                    data_path=dataset,
+                    mode=eval_mode,
+                    action_chunking=True,
+                    action_chunk_size=8,
+                    n_rollouts=n_rollouts,
+                    n_steps=n_steps,
+                    obs_path=model_config.obs_path,
+                    obs_mask=model_config.obs_mask,
+                    obs_mask_w_path=model_config.obs_mask_w_path,
+                    obs_hamster=model_config.obs_hamster,
+                    mask_pixels=model_config.mask_pixels,
+                    rainbow_path=model_config.rainbow_path,
+                    obs_gt=model_config.obs_gt,
+                    obs_exp_mask=model_config.obs_exp_mask,
+                    server_ip_vlm=server_ip_vlm,
+                    model_name_vlm=model_name_vlm,
+                    update_every_timesteps_vlm=update_every_timesteps_vlm,
+                    seed=model_config.seed,
+                )
+            elif task == "pick_and_place_robo":
+                if task == "pick_and_place_robo":
+                    n_rollouts = 5
+                    n_steps = 192
+                from run_3dda_eval_robo import eval_3dda
+                successes, videos, instructions = eval_3dda(
+                    task=task,
+                    policy=model,
+                    model_config=model_config,
+                    data_path=dataset,
+                    mode=eval_mode,
+                    action_chunking=True,
+                    action_chunk_size=8,
+                    n_rollouts=n_rollouts,
+                    n_steps=n_steps,
+                    obs_path=model_config.obs_path,
+                    obs_mask=model_config.obs_mask,
+                    obs_mask_w_path=model_config.obs_mask_w_path,
+                    obs_hamster=model_config.obs_hamster,
+                    mask_pixels=model_config.mask_pixels,
+                    rainbow_path=model_config.rainbow_path,
+                    obs_gt=model_config.obs_gt,
+                    obs_exp_mask=model_config.obs_exp_mask,
+                    server_ip_vlm=server_ip_vlm,
+                    model_name_vlm=model_name_vlm,
+                    update_every_timesteps_vlm=update_every_timesteps_vlm,
+                    seed=model_config.seed,
+                )
+
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
             )
@@ -769,7 +799,8 @@ if __name__ == "__main__":
             print("dataset already exists in /tmp/")
         args.dataset = tmp_dataset
 
-    validate = True
+    validate = False # True
+    print(("WARNING: NOT VALIDATING"))
     ext_cfg = {
         "algo_name": "bc",
         "experiment": {

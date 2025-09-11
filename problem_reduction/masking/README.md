@@ -2,6 +2,7 @@
 server-client structure bc transformer versions are incompatible between SAM2 and 3DDA ...
 
 ## GroundedSAM2 server
+pip install transformers 4.56.1
 ```bash
 conda activate pr_3dda_sam && python scripts/masking/server_groundedsam2.py
 ```

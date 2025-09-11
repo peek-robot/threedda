@@ -27,11 +27,11 @@ if __name__ == "__main__":
         "--path", type=str, default="data/pick_and_place_1000_3_objs_va_high_cam.hdf5"
     )
     parser.add_argument(
-        "--split_size", type=int, default=16
+        "--split_size", type=int, default=32
     )
     parser.add_argument(
-        "--server_ip", type=str, default=None
-    )  # https://44ba-198-48-92-26.ngrok-free.app
+        "--skip_existing", action="store_true"
+    )
     args = parser.parse_args()
 
     # load data
@@ -49,23 +49,26 @@ if __name__ == "__main__":
         "max_new_tokens": 512,
     }
     model_args = argparse.Namespace(**args_dict)
-    if args.server_ip is None:
-        model = load_model("vila", model_args)
+    model = load_model("vila", model_args)
 
     for i, dk in tqdm(enumerate(file.keys())):
 
-        # if "path_vlm" in file[dk]["obs"].keys() and "mask_vlm" in file[dk]["obs"].keys():
-        #     print("found", dk)
-        #     continue
+        if args.skip_existing and "path_vlm" in file[dk]["obs"].keys() and "mask_vlm" in file[dk]["obs"].keys():
+            print("found", dk)
+            continue
         
-        #     if not np.all(file[dk]["obs"]["path_vlm"][:] == 0) and not np.all(file[dk]["obs"]["mask_vlm"][:] == 0):
-        #         continue
+            if not np.all(file[dk]["obs"]["path_vlm"][:] == 0) and not np.all(file[dk]["obs"]["mask_vlm"][:] == 0):
+                continue
 
         # if "path_vlm" in file[dk]["obs"] and "mask_vlm" in file[dk]["obs"]:
         #     continue
 
         rgbs = file[dk]["obs"]["rgb"]
-        lang_instr = file[dk]["obs"].attrs["lang_instr"]
+        try:
+            lang_instr = file[dk]["obs"].attrs["lang_instr"]
+        except:
+            lang_instr = file[dk]["obs"]["lang_str"][0]
+            lang_instr = lang_instr.decode("utf-8")
 
         paths_pad, masks_pad = [], []
         
@@ -79,17 +82,15 @@ if __name__ == "__main__":
             images_raw.append(rgbs[split_idx * split_size])
 
         # inference
-        if args.server_ip is None:
-            # print("batch_size", len(images_raw), "traj_len", rgbs.shape[0])
-            try:
-                images_pred, paths, masks = vila_inference_batch(
-                    images_raw, [lang_instr] * len(images_raw), args=model_args
-                )
-            except Exception as e:
-                print(e)
-                images_pred = np.zeros((len(images_raw), 3, 224, 224))
-                paths = np.zeros((len(images_raw), 1, 2))
-                masks = np.zeros((len(images_raw), 1, 2))
+        try:
+            images_pred, paths, masks = vila_inference_batch(
+                images_raw, [lang_instr] * len(images_raw), args=model_args
+            )
+        except Exception as e:
+            print(e)
+            images_pred = np.zeros((len(images_raw), 3, 224, 224))
+            paths = np.zeros((len(images_raw), 1, 2))
+            masks = np.zeros((len(images_raw), 1, 2))
 
         # postprocess
         for path, mask in zip(paths, masks):
