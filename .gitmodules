@@ -1,8 +1,8 @@
-[submodule "robomimic_pcd"]
-	path = third_party/robomimic_pcd
-	url = https://github.com/memmelma/robomimic_pcd
-	branch = master
 [submodule "3d_diffuser_actor"]
 	path = third_party/3d_diffuser_actor
 	url = https://github.com/memmelma/3d_diffuser_actor.git
 	branch = master 
+[submodule "third_party/robomimic_pcd"]
+	path = third_party/robomimic_pcd
+	url = https://github.com/memmelma/robomimic_pcd
+	branch = master
