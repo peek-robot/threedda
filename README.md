@@ -9,7 +9,7 @@ cd problem_reduction
 git submodule update --init --recursive
 
 conda create -n threedda python=3.10
-mamba activate threedda
+conda activate threedda
 pip install -e .
 ```
 
