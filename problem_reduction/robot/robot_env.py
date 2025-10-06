@@ -157,8 +157,6 @@ class RobotEnv:
 
     def render(self, modality="rgb"):
         cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, self.camera_name)
-        # # visualize site frames
-        # self.renderer._scene_option.frame = mujoco.mjtFrame.mjFRAME_SITE
         self.renderer.update_scene(self.data, camera=cam_id)
 
         if modality == "rgb":
@@ -194,50 +192,7 @@ class RobotEnv:
         points = depth_to_points(
             depth, intrinsic=intrinsic, extrinsic=extrinsic, depth_scale=1000.0
         )
-        # points = depth_to_points(depth, intrinsic=intrinsic, extrinsic=extrinsic, depth_scale=1.0)
         return points
-
-    # def compute_ik(self, target_pos, target_quat, integration_dt=0.1, damping=1e-4):
-    
-    #     curr_pos, curr_quat = self.get_ee_pos(), self.get_ee_quat()
-
-    #     # Pre-allocate numpy arrays.
-    #     jac = np.zeros((6, self.model.nv))
-    #     diag = damping * np.eye(6)
-    #     error = np.zeros(6)
-    #     error_pos = error[:3]
-    #     error_ori = error[3:]
-    #     curr_quat_conj = np.zeros(4)
-    #     error_quat = np.zeros(4)
-
-    #     # Position error.
-    #     error_pos[:] = target_pos - curr_pos
-
-    #     # Orientation error.
-    #     mujoco.mju_negQuat(curr_quat_conj, curr_quat)
-    #     mujoco.mju_mulQuat(error_quat, target_quat, curr_quat_conj)
-    #     mujoco.mju_quat2Vel(error_ori, error_quat, 1.0)
-
-    #     # Get the Jacobian with respect to the end-effector site.
-    #     mujoco.mj_jacSite(self.model, self.data, jac[:3], jac[3:], self.ee_site_id)
-    #     # Solve system of equations: J @ dq = error.
-    #     jac = jac[:, self.joint_qpos_ids]
-    #     dq = jac.T @ np.linalg.solve(jac @ jac.T + diag, error)
-
-    #     # Create full joint velocity vector
-    #     dq_full = np.zeros(self.model.nv)
-    #     dq_full[self.joint_qpos_ids] = dq
-
-    #     # Get full joint position vector
-    #     q_full = self.data.qpos.copy()
-        
-    #     # Integrate joint velocities to obtain joint positions
-    #     mujoco.mj_integratePos(self.model, q_full, dq_full, integration_dt)
-
-    #     # Return only the controlled joint positions
-    #     q = q_full[self.joint_qpos_ids]
-    #     q = np.clip(q, self.min_qpos, self.max_qpos)
-    #     return q
 
     def step(self, action):
         if self.controller == "abs_joint":
@@ -475,7 +430,6 @@ class CubeEnv(RobotEnv):
         if "new" in xml_path:
             self.new_setup = True
         
-
         self.num_objs = num_objs
         self.obj_size = size
         self.obj_pos_dist = obj_pos_dist
@@ -498,15 +452,6 @@ class CubeEnv(RobotEnv):
             # "magenta": [1.0, 0.0, 1.0],
             # "orange":  [1.0, 0.5, 0.0]
         }
-        
-        if self.num_objs == 1:
-            # self.main_colors["scotch_blue"] = [0.03921569, 0.43529412, 0.79607843]
-            # self.color_names = ["scotch_blue"]
-            self.color_names = ["blue"]
-            self.colors = self.main_colors[self.color_names[0]]
-        elif self.num_objs == 2:
-            self.color_names = ["blue", "red"]
-            self.colors = np.concatenate([self.main_colors[self.color_names[0]], self.main_colors[self.color_names[1]]], axis=0)
 
     def seed(self, seed):
         np.random.seed(seed)
@@ -542,26 +487,14 @@ class CubeEnv(RobotEnv):
                         if len(selected) == N:
                             return selected
         box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.1)
-        # box_poss = sample_positions(self.num_objs, self.obj_pos_dist[0][:2], self.obj_pos_dist[1][:2], d=0.06)
         
         for _ in range(self.num_objs):
-            # box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
             if self.new_setup:
                 box_pos = np.concatenate((box_poss[_], [self.obj_size + 0.0075]))
             else:
                 box_pos = np.concatenate((box_poss[_], [self.obj_size]))
 
             # ensure box is not too close to prev boxes
-            # if len(obj_poses) > 0:
-            #     solution_found = False
-            #     for _ in range(100):
-            #         box_pos = np.random.uniform(self.obj_pos_dist[0], self.obj_pos_dist[1])
-            #         if np.all(np.abs(box_pos[:2] - np.array(obj_poses)[:,:2]) > 0.06):
-            #             solution_found = True
-            #             break
-            #     if not solution_found:
-            #         print("No solution found in 100 attempts, hard env reset - try to increase sample space")
-            #         self.reset()
             box_euler = np.zeros(3)
             box_euler[2] = np.random.uniform(
                 self.obj_ori_dist[2][0], self.obj_ori_dist[2][1]
@@ -578,21 +511,14 @@ class CubeEnv(RobotEnv):
         obj_poses = np.concatenate(obj_poses, axis=0)
         self.set_obj_poses(obj_poses)
         
-        if self.num_objs == 3:
-            # draw 3 colors from main_colors
-            self.color_names = np.random.choice(list(self.main_colors.keys()), size=3, replace=False)
-            self.colors = np.concatenate([self.main_colors[i] for i in self.color_names], axis=0)
+        # draw 3 colors from main_colors
+        self.color_names = np.random.choice(list(self.main_colors.keys()), size=3, replace=False)
+        self.colors = np.concatenate([self.main_colors[i] for i in self.color_names], axis=0)
 
         self.set_obj_colors(self.colors)
 
     def get_lang_instr(self):
-        if self.num_objs == 1:
-            lang = f"pick up the {self.color_names[0]} cube"
-        elif self.num_objs == 2:
-            lang = f"put the {self.color_names[0]} cube on the {self.color_names[1]} cube"
-        elif self.num_objs == 3:
-            lang = f"put the {self.color_names[0]} cube on the {self.color_names[1]} cube"
-        return lang
+        return f"put the {self.color_names[0]} cube on the {self.color_names[1]} cube"
 
     def set_obj_poses(self, obj_poses):
         for i, obj_qpos_id in enumerate(self.obj_qpos_ids):

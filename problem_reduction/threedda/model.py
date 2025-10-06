@@ -1,6 +1,3 @@
-# import sys
-# sys.path.append("/home/marius/Projects/3d_diffuser_actor")
-# sys.path.append("/home/memmelma/Projects/robotic/3d_diffuser_actor")
 import os
 import torch
 from torch import optim
@@ -82,52 +79,28 @@ def augment_rgb_sequence(imgs, brightness=0.2, contrast=0.2, color_jitter=0.1):
 
 def get_model(da_config, device="cpu"):
 
-    from diffuser_actor import DiffuserActor, DiffuserJointer
+    from diffuser_actor import DiffuserActor
 
-    assert da_config.action_space in ["abs_ee", "joint"], "Invalid action space: {}".format(da_config.action_space)
-
-    if da_config.action_space == "abs_ee":
-        model = DiffuserActor(
-            backbone="clip",
-            image_size=da_config.image_size,
-            embedding_dim=da_config.embedding_dim,
-            num_attn_heads=da_config.num_attn_heads,
-            num_vis_ins_attn_layers=2,
-            use_instruction=True,
-            fps_subsampling_factor=da_config.fps_subsampling_factor,
-            high_res_features=da_config.high_res_features,
-            gripper_loc_bounds=np.array([
-                [0.25, -0.25, 0.0],
-                [0.75, 0.25, 0.4]
-            ]),
-            # rotation_parametrization="quat", # -> 6D is hardcoded ...
-            rotation_parametrization='6D',
-            quaternion_format="wxyz",
-            diffusion_timesteps=da_config.diffusion_timesteps,
-            nhist=da_config.history,
-            relative=False,
-            lang_enhanced=False,
-            loss_weights=da_config.loss_weights, # [30., 10., 1.]
-        )
-    elif da_config.action_space == "joint":
-        model = DiffuserJointer(
-            backbone="clip",
-            image_size=da_config.image_size,
-            embedding_dim=da_config.embedding_dim,
-            num_attn_heads=da_config.num_attn_heads,
-            num_vis_ins_attn_layers=2,
-            use_instruction=True,
-            fps_subsampling_factor=da_config.fps_subsampling_factor,
-            high_res_features=da_config.high_res_features,
-            gripper_loc_bounds=da_config.gripper_loc_bounds,
-            joint_loc_bounds=da_config.joint_loc_bounds,
-            loss_weights=da_config.loss_weights,
-            diffusion_timesteps=da_config.diffusion_timesteps,
-            nhist=da_config.history,
-            relative=False,
-            traj_relative=da_config.traj_relative,
-            lang_enhanced=False
-        )
+    model = DiffuserActor(
+        backbone="clip",
+        image_size=da_config.image_size,
+        embedding_dim=da_config.embedding_dim,
+        num_attn_heads=da_config.num_attn_heads,
+        num_vis_ins_attn_layers=2,
+        use_instruction=True,
+        fps_subsampling_factor=da_config.fps_subsampling_factor,
+        gripper_loc_bounds=np.array([
+            [0.25, -0.25, 0.0],
+            [0.75, 0.25, 0.4]
+        ]),
+        rotation_parametrization='6D',
+        quaternion_format="wxyz",
+        diffusion_timesteps=da_config.diffusion_timesteps,
+        nhist=da_config.history,
+        relative=False,
+        lang_enhanced=False,
+        loss_weights=da_config.loss_weights,
+    )
 
     model.to(device)
     return model

@@ -1,1 +1,0 @@
-huggingface-cli download Efficient-Large-Model/VILA1.5-3b --cache-dir /lustre/fsw/portfolios/nvr/users/mmemmel/projects/checkpoints/pretrained

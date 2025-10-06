@@ -26,7 +26,7 @@ def depth_to_points_torch_batched(depth, intrinsic, extrinsic, depth_scale=1000.
     points = (extrinsic @ points).transpose(1, 2)[:, :, :3]  # (B, H*W, 3)
     return points
 
-def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False, obs_noise_std=0.0, obs_path_mask_noise_std=0.0, obs_discrete_gripper=True, obs_no_proprio=False, obs_path=False, obs_mask=False, obs_mask_w_path=False, obs_gt=False, obs_hamster=False, obs_outlier=False, rainbow_path=False, mask_pixels=10, action_space="joint", device=None):
+def prepare_batch(sample, history, horizon, obs_noise_std=0.0, obs_path_mask_noise_std=0.0, obs_discrete_gripper=True, obs_path=False, obs_mask=False, obs_mask_w_path=False, mask_pixels=10, action_space="abs_ee", device=None):
     # gt_trajectory: (B, trajectory_length, 3+4+X)
     # trajectory_mask: (B, trajectory_length)
     # timestep: (B, 1)
@@ -55,8 +55,6 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # (optional) add noise to ee_pose/qpos obs
     if obs_noise_std > 0:
         curr_gripper = curr_gripper + torch.normal(0, obs_noise_std, curr_gripper.shape).to(curr_gripper.device)
-    if obs_no_proprio:
-        curr_gripper = torch.zeros_like(curr_gripper)
 
     for k in sample["obs"].keys():
         sample["obs"][k] = sample["obs"][k][:, history-1]
@@ -69,7 +67,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # store mask as 2d depth
     if obs_mask:
         mask_depths = []
-        for mask, depth in zip(sample["obs"]["mask" if obs_gt else "mask_vlm"], sample["obs"][depth_key]):
+        for mask, depth in zip(sample["obs"]["mask_vlm"], sample["obs"][depth_key]):
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
@@ -84,7 +82,7 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # store mask w/ pathas 2d depth
     if obs_mask_w_path:
         mask_depths = []
-        for mask, path, depth in zip(sample["obs"]["mask" if obs_gt else "mask_vlm"], sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][depth_key]):
+        for mask, path, depth in zip(sample["obs"]["mask_vlm"], sample["obs"]["path_vlm"], sample["obs"][depth_key]):
             # unpad mask
             m = ~( (mask[:,0] == -1.) & (mask[:,1] == -1.) )
             mask_unpad = mask[m]
@@ -112,43 +110,19 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
     # NOTE: do this after RGB is masked out!
     if obs_path:
         path_rgbs = []
-        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
+        for path, rgb in zip(sample["obs"]["path_vlm"], sample["obs"][img_key]):
             # unpad path
             m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) )
             path_unpad = path[m]
             path_unpad = path_unpad + torch.normal(0, obs_path_mask_noise_std, path_unpad.shape).to(path_unpad.device)
             path_unpad = torch.clamp(path_unpad, 0., 1.)
 
-            if rainbow_path:
-                from problem_reduction.vila.inference_hamster import draw_lines_on_image_cv
-                path_rgb = draw_lines_on_image_cv(rgb.cpu().numpy(), path_unpad.cpu().numpy(), draw_action=False)
-            else:
-                path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
-                # add path to rgb
-                path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
+            path_unpad = scale_path(path_unpad, min_in=0., max_in=1., min_out=0., max_out=H)
+            # add path to rgb
+            path_rgb = add_path_2d_to_img(rgb.cpu().numpy(), path_unpad.cpu().numpy())
             path_rgbs.append(torch.from_numpy(path_rgb))
         sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
 
-    if obs_hamster:
-        path_rgbs = []
-        for path, rgb in zip(sample["obs"]["path" if obs_gt else "path_vlm"], sample["obs"][img_key]):
-            # unpad path
-            m = ~( (path[:,0] == -1.) & (path[:,1] == -1.) & (path[:,2] == -1.) )
-            path_unpad = path[m]
-            path_unpad = path_unpad + torch.normal(0, obs_path_mask_noise_std, path_unpad.shape).to(path_unpad.device)
-            path_unpad = torch.clamp(path_unpad, 0., 1.)
-            
-            from problem_reduction.vila.inference_hamster import draw_lines_on_image_cv
-            if len(path_unpad) == 1:
-                path_unpad = torch.repeat_interleave(path_unpad, 2, dim=0)
-            path_rgb = draw_lines_on_image_cv(rgb.cpu().numpy(), path_unpad.cpu().numpy(), draw_action=True)
-            path_rgbs.append(torch.from_numpy(path_rgb))
-        sample["obs"][img_key] = torch.stack(path_rgbs, dim=0).to(tmp_device)
-    # import matplotlib.pyplot as plt
-    # plt.imsave("mask_depth_rgb.png", sample["obs"][img_key][0].cpu().numpy())
-    # plt.imsave("mask_depth_depth.png", sample["obs"][depth_key][0].cpu().numpy())
-    # import IPython; IPython.embed()
-    
     points = depth_to_points_torch_batched(sample["obs"][depth_key].reshape(B, H, W), sample["obs"]["camera_intrinsic"].reshape(B, 3, 3), sample["obs"]["camera_extrinsic"].reshape(B, 4, 4), depth_scale=1000.)
     colors = sample["obs"][img_key].reshape(B, H * W, 3)
     
@@ -165,42 +139,6 @@ def prepare_batch(sample, history, horizon, obs_crop=False, obs_crop_cube=False,
             colors[~valid_mask] = 0.
         return points, colors
     
-    # WARNING: zero_points with min < -1. will also crop the mask predictions from the colors/rgb!
-    if obs_crop:
-        # raise NotImplementedError("obs_crop not supported")
-
-        # # no table surface
-        # points, colors = zero_points(points, colors, crop_min=[0.0, -0.5, 0.01], crop_max=[0.8, 0.5, 1.])
-
-        # # just the table
-        # points, colors = zero_points(points, colors, crop_min=[0.3, -0.2, -0.1], crop_max=[0.7, 0.2, 0.3])
-
-        # # full workspace + robot
-        points, colors = zero_points(points, colors, crop_min=[0., -0.3, -0.1], crop_max=[0.7, 0.3, 0.8])
-    
-    if obs_crop_cube:
-        raise NotImplementedError("obs_crop_cube not supported")
-        points, colors = zero_points(points, colors, crop_min=[0.2, -0.3, 0.02], crop_max=[0.7, 0.3, 0.3])
-    
-    if obs_outlier:
-        print("WARNING only use during inference - OOM otherwise")
-        def remove_outliers(points, colors, k=3, threshold=2e-2):
-            H, W, _ = points.shape
-            pts = points.reshape(-1, 3)
-            cols = colors.reshape(-1, 3)
-            diffs = pts.unsqueeze(1) - pts.unsqueeze(0)
-            dists = torch.norm(diffs, dim=2)
-            knn_dists, _ = torch.topk(dists, k+1, largest=False)
-            mean_knn_dist = knn_dists[:, 1:].mean(dim=1)
-            outliers = mean_knn_dist > threshold
-            cleaned_pts = pts.clone()
-            cleaned_cols = cols.clone()
-            cleaned_pts[outliers] = 0
-            cleaned_cols[outliers] = 0
-            return cleaned_pts.reshape(H, W, 3), cleaned_cols.reshape(H, W, 3)
-
-        points, colors = remove_outliers(points, colors,k=3, threshold=2e-2)
-
     points = points.reshape(B, H, W, 3)
     colors = colors.reshape(B, H, W, 3)
     pcd_obs = points.permute(0, 3, 1, 2).unsqueeze(1).float()

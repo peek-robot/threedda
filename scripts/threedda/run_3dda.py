@@ -1,9 +1,3 @@
-# pip uninstall transformers -y
-# pip install transformers --no-cache-dir
-
-# https://github.com/easydiffusion/easydiffusion/issues/1851#issuecomment-2437615074
-# pip install huggingface_hub==0.25.0
-
 import argparse
 import json
 import os
@@ -97,7 +91,6 @@ def get_dataloaders_from_mimic(config):
 
 
 def train(
-    task,
     model,
     optimizer,
     train_loader,
@@ -145,19 +138,11 @@ def train(
                 horizon=model_config.horizon,
                 obs_noise_std=model_config.obs_noise_std,
                 obs_path_mask_noise_std=model_config.obs_path_mask_noise_std,
-                obs_no_proprio=model_config.obs_no_proprio,
                 obs_discrete_gripper=not model_config.obs_continuous_gripper,
-                obs_crop=model_config.obs_crop,
-                obs_crop_cube=model_config.obs_crop_cube,
-                obs_outlier=model_config.obs_outlier,
-                obs_hamster=model_config.obs_hamster,
                 obs_path=model_config.obs_path,
                 obs_mask=model_config.obs_mask,
                 obs_mask_w_path=model_config.obs_mask_w_path,
                 mask_pixels=model_config.mask_pixels,
-                obs_gt=model_config.obs_gt,
-                rainbow_path=model_config.rainbow_path,
-                action_space=model_config.action_space,
                 device=device,
             )
 
@@ -178,18 +163,11 @@ def train(
 
                 acts = model.forward(**batch_prepared, run_inference=True)
 
-                if model_config.action_space == "joint":
-                    metrics = criterion.compute_metrics_joint(
-                        acts,
-                        batch_prepared["gt_trajectory"],
-                        batch_prepared["trajectory_mask"],
-                    )[0]
-                else:
-                    metrics = criterion.compute_metrics(
-                        acts,
-                        batch_prepared["gt_trajectory"],
-                        batch_prepared["trajectory_mask"],
-                    )[0]
+                metrics = criterion.compute_metrics(
+                    acts,
+                    batch_prepared["gt_trajectory"],
+                    batch_prepared["trajectory_mask"],
+                )[0]
 
                 for k, v in metrics.items():
                     if k not in train_losses:
@@ -292,18 +270,10 @@ def train(
                     obs_noise_std=0.0, # model_config.obs_noise_std,
                     obs_path_mask_noise_std=0.0, # model_config.obs_path_mask_noise_std,
                     obs_discrete_gripper=not model_config.obs_continuous_gripper,
-                    obs_no_proprio=model_config.obs_no_proprio,
-                    obs_crop=model_config.obs_crop,
-                    obs_crop_cube=model_config.obs_crop_cube,
-                    obs_outlier=model_config.obs_outlier,
-                    obs_hamster=model_config.obs_hamster,
                     obs_path=model_config.obs_path,
                     obs_mask=model_config.obs_mask,
                     obs_mask_w_path=model_config.obs_mask_w_path,
                     mask_pixels=model_config.mask_pixels,
-                    obs_gt=model_config.obs_gt,
-                    rainbow_path=model_config.rainbow_path,
-                    action_space=model_config.action_space,
                     device=device,
                 )
 
@@ -315,18 +285,11 @@ def train(
                         test_losses[k].append(v.item())
 
                     acts = model.forward(**batch_prepared, run_inference=True)
-                    if model_config.action_space == "joint":
-                        metrics = criterion.compute_metrics_joint(
-                            acts,
-                            batch_prepared["gt_trajectory"],
-                            batch_prepared["trajectory_mask"],
-                        )[0]
-                    else:
-                        metrics = criterion.compute_metrics(
-                            acts,
-                            batch_prepared["gt_trajectory"],
-                            batch_prepared["trajectory_mask"],
-                        )[0]
+                    metrics = criterion.compute_metrics(
+                        acts,
+                        batch_prepared["gt_trajectory"],
+                        batch_prepared["trajectory_mask"],
+                    )[0]
 
                     for k, v in metrics.items():
                         if k not in test_losses:
@@ -364,67 +327,29 @@ def train(
             
             eval_mode = "closed_loop"
             
-            if task == "pick_and_place" or task =="pick":
-                if task == "pick_and_place":
-                    n_rollouts = 25
-                    n_steps = 128
-                elif task == "pick":
-                    n_rollouts = 16
-                    n_steps = 72
+            n_rollouts = 25
+            n_steps = 128
 
-                from run_3dda_eval import eval_3dda
-                successes, videos, instructions = eval_3dda(
-                    task=task,
-                    policy=model,
-                    model_config=model_config,
-                    data_path=dataset,
-                    mode=eval_mode,
-                    action_chunking=True,
-                    action_chunk_size=8,
-                    n_rollouts=n_rollouts,
-                    n_steps=n_steps,
-                    obs_path=model_config.obs_path,
-                    obs_mask=model_config.obs_mask,
-                    obs_mask_w_path=model_config.obs_mask_w_path,
-                    obs_hamster=model_config.obs_hamster,
-                    mask_pixels=model_config.mask_pixels,
-                    rainbow_path=model_config.rainbow_path,
-                    obs_gt=model_config.obs_gt,
-                    obs_exp_mask=model_config.obs_exp_mask,
-                    server_ip_vlm=server_ip_vlm,
-                    model_name_vlm=model_name_vlm,
-                    update_every_timesteps_vlm=update_every_timesteps_vlm,
-                    seed=model_config.seed,
-                )
-            elif task == "pick_and_place_robo":
-                if task == "pick_and_place_robo":
-                    n_rollouts = 5
-                    n_steps = 192
-                from run_3dda_eval_robo import eval_3dda
-                successes, videos, instructions = eval_3dda(
-                    task=task,
-                    policy=model,
-                    model_config=model_config,
-                    data_path=dataset,
-                    mode=eval_mode,
-                    action_chunking=True,
-                    action_chunk_size=8,
-                    n_rollouts=n_rollouts,
-                    n_steps=n_steps,
-                    obs_path=model_config.obs_path,
-                    obs_mask=model_config.obs_mask,
-                    obs_mask_w_path=model_config.obs_mask_w_path,
-                    obs_hamster=model_config.obs_hamster,
-                    mask_pixels=model_config.mask_pixels,
-                    rainbow_path=model_config.rainbow_path,
-                    obs_gt=model_config.obs_gt,
-                    obs_exp_mask=model_config.obs_exp_mask,
-                    server_ip_vlm=server_ip_vlm,
-                    model_name_vlm=model_name_vlm,
-                    update_every_timesteps_vlm=update_every_timesteps_vlm,
-                    seed=model_config.seed,
-                )
-
+            from run_3dda_eval import eval_3dda
+            successes, videos, instructions = eval_3dda(
+                policy=model,
+                model_config=model_config,
+                data_path=dataset,
+                mode=eval_mode,
+                action_chunking=True,
+                action_chunk_size=8,
+                n_rollouts=n_rollouts,
+                n_steps=n_steps,
+                obs_path=model_config.obs_path,
+                obs_mask=model_config.obs_mask,
+                obs_mask_w_path=model_config.obs_mask_w_path,
+                mask_pixels=model_config.mask_pixels,
+                server_ip_vlm=server_ip_vlm,
+                model_name_vlm=model_name_vlm,
+                update_every_timesteps_vlm=update_every_timesteps_vlm,
+                seed=model_config.seed,
+            )
+            
             wandb.log(
                 {"epoch": epoch, f"eval/{eval_mode}/success_rate": np.mean(successes)}
             )
@@ -438,38 +363,6 @@ def train(
                     }
                 )
 
-        # ### HACK: real data eval ###
-        # if (epoch % model_config.eval_every_n_epochs == 0 and epoch != 0):
-        #     eval_mode = "open_loop"
-        #     successes, videos, instructions = eval_3dda(
-        #         policy=model,
-        #         model_config=model_config,
-        #         data_path="gifs_curobo/pick_10_1_objs_va_high_cam.hdf5",
-
-        #         real_data_path="pick_10_1_objs_va_high_cam_real.hdf5",
-        #         open_loop_obs_key="obs_real",
-        #         n_rollouts=1,
-        #         n_steps=1,
-
-        #         mode=eval_mode,
-        #         action_chunking=True,
-        #         action_chunk_size=8,
-        #         clip_embedder=clip_embedder,
-        #         path_mode="open_loop" if model_config.obs_path else None,
-        #         mask_mode="open_loop" if model_config.obs_mask else None,
-        #     )
-        #     wandb.log({"epoch": epoch, f"eval_real/{eval_mode}/success_rate": np.mean(successes)})
-        #     for i, (video, instruction) in enumerate(zip(videos, instructions)):
-        #         wandb.log(
-        #             {
-        #                 "epoch": epoch,
-        #                 f"eval_real/{eval_mode}/{instruction}_{i}": wandb.Video(
-        #                     video.transpose(0, 3, 1, 2), fps=10, format="gif"
-        #                 )
-        #             }
-        #         )
-        # ### HACK: real data eval ###
-
 
 if __name__ == "__main__":
     # define arguments
@@ -477,10 +370,6 @@ if __name__ == "__main__":
         description="robomimic training script for SimPLER (RoboVerse)"
     )
     parser.add_argument("--name", type=str, required=True, help="experiment name")
-    parser.add_argument("--task", type=str, required=True, help="task")
-    parser.add_argument(
-        "--action_space", type=str, default="joint", help="action space"
-    )
     parser.add_argument(
         "--num_epochs",
         type=int,
@@ -515,41 +404,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--wandb_project",
         type=str,
-        default="sim2real",
         help="wandb project name",
     )
     parser.add_argument(
         "--wandb_entity",
         type=str,
-        default="memmelma",
         help="wandb entity",
     )
     parser.add_argument(
         "--resume", action="store_true", help="resume training from latest ckpt"
     )
 
-    # EXPERIMENTS
-
     parser.add_argument(
         "--image_size",
         type=int,
         default=128,
         help="image size",
-    )
-    parser.add_argument(
-        "--obs_crop",
-        action="store_true",
-        help="crop points",
-    )
-    parser.add_argument(
-        "--obs_crop_cube",
-        action="store_true",
-        help="crop cube points",
-    )
-    parser.add_argument(
-        "--obs_outlier",
-        action="store_true",
-        help="remove outliers",
     )
     parser.add_argument(
         "--obs_path",
@@ -567,21 +437,6 @@ if __name__ == "__main__":
         help="use mask w/ path",
     )
     parser.add_argument(
-        "--obs_gt",
-        action="store_true",
-        help="use gt",
-    )
-    parser.add_argument(
-        "--obs_hamster",
-        action="store_true",
-        help="use hamster",
-    )
-    parser.add_argument(
-        "--obs_exp_mask",
-        action="store_true",
-        help="use explicit mask",
-    )
-    parser.add_argument(
         "--obs_noise_std",
         type=float,
         default=0.01,
@@ -590,7 +445,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--obs_path_mask_noise_std",
         type=float,
-        default=0.0,
+        default=0.01,
         help="noise std",
     )
     parser.add_argument(
@@ -600,15 +455,9 @@ if __name__ == "__main__":
         help="fps subsampling factor",
     )
     parser.add_argument(
-        # NOTE: increases initial points from 1024 -> 4096 by increasing CLIP feature resolution from 32x32 to 64x64
-        "--high_res_features",
-        action="store_true",
-        help="use high res features",
-    )
-    parser.add_argument(
         "--history",
         type=int,
-        default=2,
+        default=1,
         help="history",
     )
     parser.add_argument(
@@ -622,19 +471,9 @@ if __name__ == "__main__":
         help="augment rgb",
     )
     parser.add_argument(
-        "--normalize_loss",
-        action="store_true",
-        help="normalize loss",
-    )
-    parser.add_argument(
         "--obs_continuous_gripper",
         action="store_true",
         help="continuous gripper",
-    )
-    parser.add_argument(
-        "--obs_no_proprio",
-        action="store_true",
-        help="no proprio",
     )
     parser.add_argument(
         "--horizon",
@@ -642,19 +481,9 @@ if __name__ == "__main__":
         default=16,
     )
     parser.add_argument(
-        "--slurm",
-        action="store_true",
-        help="slurm",
-    )
-    parser.add_argument(
-        "--traj_relative",
-        action="store_true",
-        help="traj relative",
-    )
-    parser.add_argument(
         "--model_name_vlm",
         type=str,
-        default="vila_3b_path_mask_fast",
+        default="peek_3b",
         help="model name vlm",
     )
     parser.add_argument(
@@ -677,13 +506,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--mask_pixels",
         type=int,
-        default=10,
+        default=15,
         help="mask pixels",
-    )
-    parser.add_argument(
-        "--rainbow_path",
-        action="store_true",
-        help="rainbow path",
     )
     parser.add_argument(
         "--loss_weights",
@@ -695,7 +519,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--seed",
         type=int,
-        default=1,
+        default=0,
         help="seed",
     )
     # parse arguments
@@ -735,76 +559,46 @@ if __name__ == "__main__":
         "epoch_every_n_steps": args.epoch_every_n_steps,
         "horizon": args.horizon,
         "history": args.history,
-        "batch_size": 64, # 32,
+        "batch_size": 64,
         "lr": 3e-4,
-        "embedding_dim": 60, # -> maybe try 32 | 60
-        "num_attn_heads": 6, # -> maybe try 4 | 6
+        "embedding_dim": 60,
+        "num_attn_heads": 6,
         "diffusion_timesteps": 100,
-        "action_space": args.action_space,  # "joint" or "abs_ee"
-        "traj_relative": args.traj_relative,
-        "joint_loc_bounds": joint_loc_bounds,
-        "gripper_loc_bounds": None,
-        "loss_weights": args.loss_weights, # [30, 10]
-        "normalize_loss": not args.normalize_loss,
+        "loss_weights": args.loss_weights,
         "image_size": (args.image_size, args.image_size),
-        # ablations
-        "fps_subsampling_factor": args.fps_subsampling_factor, # -> maybe sample less
+        "fps_subsampling_factor": args.fps_subsampling_factor,
         "obs_noise_std": args.obs_noise_std,
         "obs_path_mask_noise_std": args.obs_path_mask_noise_std,
-        "obs_no_proprio": args.obs_no_proprio,
         "obs_continuous_gripper": args.obs_continuous_gripper,
-        "obs_crop": args.obs_crop,
-        "obs_crop_cube": args.obs_crop_cube,
-        "obs_outlier": args.obs_outlier,
         "obs_path": args.obs_path,
         "obs_mask": args.obs_mask,
         "obs_mask_w_path": args.obs_mask_w_path,
-        "obs_exp_mask": args.obs_exp_mask,
-        "rainbow_path": args.rainbow_path,
         "mask_pixels": args.mask_pixels,
-        "obs_gt": args.obs_gt,
-        "obs_hamster": args.obs_hamster,
         "augment_pcd": args.augment_pcd,
         "augment_rgb": args.augment_rgb,
-        "high_res_features": args.high_res_features,
         "seed": args.seed,
     }
     model_config = Namespace(**model_config)
 
     low_dim_keys = [
-        "ee_pose" if args.action_space == "abs_ee" else "qpos",
-        # "qpos_normalized",
+        "ee_pose",
         "gripper_state_continuous",
         "gripper_state_discrete",
         "lang_instr",
     ]
 
-    # set path/mask keys depending on whether to use gt or vlm generated predictions
-    if model_config.obs_path or model_config.obs_hamster:
-        low_dim_keys.append("path" if model_config.obs_gt else "path_vlm")
+    if model_config.obs_path:
+        low_dim_keys.append("path_vlm")
     if model_config.obs_mask:
-        low_dim_keys.append("mask" if model_config.obs_gt else "mask_vlm")
+        low_dim_keys.append("mask_vlm")
     if model_config.obs_mask_w_path:
-        low_dim_keys.append("mask" if model_config.obs_gt else "mask_vlm")
-        low_dim_keys.append("path" if model_config.obs_gt else "path_vlm")
+        low_dim_keys.append("mask_vlm")
+        low_dim_keys.append("path_vlm")
 
-    if args.slurm:
-        import shutil
-
-        tmp_dataset = "/tmp/" + os.path.basename(args.dataset)
-        if not os.path.exists(tmp_dataset):
-            print("Copying dataset to /tmp/ ...")
-            shutil.copy(args.dataset, tmp_dataset)
-        else:
-            print("dataset already exists in /tmp/")
-        args.dataset = tmp_dataset
-
-    validate = False # True
-    print(("WARNING: NOT VALIDATING"))
     ext_cfg = {
         "algo_name": "bc",
         "experiment": {
-            "validate": validate,
+            "validate": True,
         },
         "observation": {
             "modalities": {
@@ -825,8 +619,8 @@ if __name__ == "__main__":
             "hdf5_use_swmr": True,
             "hdf5_load_next_obs": False,
             "hdf5_normalize_obs": False,
-            "hdf5_filter_key": "train" if validate else None,
-            "hdf5_validation_filter_key": "valid" if validate else None,
+            "hdf5_filter_key": "train",
+            "hdf5_validation_filter_key": "valid",
             "seq_length": model_config.horizon + 1,
             "pad_seq_length": True,
             "frame_stack": model_config.history,
@@ -853,8 +647,6 @@ if __name__ == "__main__":
         model, optimizer, start_epoch, best_loss, wandb_config, model_config = (
             load_checkpoint(resume_path, device=device)
         )
-        # model_config.num_epochs = 2500
-
         wandb.init(
             entity=wandb_config["entity"],
             project=wandb_config["project"],
@@ -887,7 +679,6 @@ if __name__ == "__main__":
     model_config.num_epochs = args.num_epochs
 
     train(
-        task=args.task,
         model=model,
         optimizer=optimizer,
         train_loader=train_loader,

@@ -1,62 +1,19 @@
-# pick_data_gen
+# Instructions for Training 3D Diffuser Actor with PEEK
 
+## 🚀 Installation
 
-
-Start by setting up the conda env and installing the [base package](#base-package). Then install either [data generation](#data-generation) or [policy learning](#policy-learning).
-
-WARNING: Due to conflicting cuda versions, it is recommended to create separate conda envs for [data generation w/ curobo] and [policy learning w/ 3dda]!
-
-ATTENTION: On hyak you have to load the required cuda version on a compute node!
-```bash
-module load cuda/11.8.0
-```
-
-## base package
+### Setup the repository and conda env
 ```bash
 git clone https://github.com/memmelma/problem_reduction.git
 cd problem_reduction
 git submodule update --init --recursive
-```
 
-```bash
-ENV_NAME=[!REPLACE ME!]
-mamba create -n $ENV_NAME python=3.10
-mamba activate $ENV_NAME
+conda create -n threedda python=3.10
+mamba activate threedda
 pip install -e .
 ```
 
-## data generation
-
-### install curobo (takes up to 20min)
-```bash
-ROOT_DIR=$(pwd)
-sudo apt install nvidia-cuda-toolkit
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-mamba install -c conda-forge 'gcc[version=">=6,<11"]' 'gxx[version=">=6,<11"]' -y
-export CUDA_HOME=$CONDA_PREFIX
-mamba install nvidia/label/cuda-11.8.0::cuda -y
-mamba install nvidia/label/cuda-11.8.0::cuda-nvcc -y
-mamba install nvidia/label/cuda-11.8.0::cuda-cudart -y
-
-cd third_party/curobo
-pip install -e . --no-build-isolation
-cd $ROOT_DIR
-```
-
-### install transformers
-```bash
-pip install transformers==4.30.2
-```
-
-### example cmd
-```bash
-python scripts/datagen/generate.py --identifier debug
-```
-
-## policy learning
-
-### install diffuser actor (policy)
+### Install diffuser actor (policy)
 ```bash
 ROOT_DIR=$(pwd)
 pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
@@ -71,65 +28,36 @@ pip install -e .
 cd $ROOT_DIR
 ```
 
-### install robomimic (dataloader)
+### Install robomimic (dataloader)
 ```bash
 ROOT_DIR=$(pwd)
-cd third_party/robomimic_pcd
+cd third_party/robomimic
 pip install -e .
 cd $ROOT_DIR
 ```
 
-### example cmd
+## 🧊 Cube Stacking Dataset
+
+![Cube Stacking Dataset Example](dataset_grid.gif)
+
+The dataset contains ~2.5k trajectories of cube stacking generated with motion planning. Each scene contains 3 cubes with unique colors sampled from ```{red, green, blue, yellow}``` with language instruction ```"put the {red, green, blue, yellow} cube on the {red, green, blue, yellow} cube"```.
+
+Download the cube stacking dataset from [huggingface](https://huggingface.co/datasets/memmelma/peek_threedda/tree/main).
+
+
+
+## 💪 Training Example
+To train and evaluate your own policies, follow:
+1. Start the [PEEK VLM](https://github.com/memmelma/peek_vlm/blob/main/README.md#server) server
+2. The flags ```--obs_path``` and ```--obs_mask_w_path``` control path- and masking on the policy's RGB-D observations
+3. (Optional) Pass ```--wandb_entity``` and ```--wandb_project``` to enable wandb logging for training and evaluation metrics
+
+Usage:
 ```bash
-python scripts/threedda/run_3dda.py --dataset data/pick_and_place_1000_3_objs_va_high_cam.hdf5 --augment_rgb --augment_pcd --obs_crop --name debug --history 2 --horizon 8 --fps_subsampling_factor 5 --num_epochs 1500 --eval_every_n_epochs 1 --epoch_every_n_steps 1
+python scripts/threedda/run_3dda.py --dataset peek_threedda/pick_and_place_2500_3_objs_va_vel_004_ee.hdf5 --obs_continuous_gripper --obs_path --obs_mask_w_path --server_ip_vlm http://localhost:8000 --num_epochs 1500 --name example
 ```
 
-# VLM
-
-### install VILA1.5
-```bash
-ROOT_DIR=$(pwd)
-conda create -n vila python=3.10 -y
-conda activate vila
-
-conda install -c nvidia cuda-toolkit -y
-pip install --upgrade pip  # enable PEP 660 support
-# this is optional if you prefer to system built-in nvcc.
-
-cd third_party/VILA
-wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.4.2/flash_attn-2.4.2+cu118torch2.0cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
-pip install flash_attn-2.4.2+cu118torch2.0cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
-rm flash_attn-2.4.2+cu118torch2.0cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
-
-pip install -e .
-pip install -e ".[train]"
-
-pip install git+https://github.com/huggingface/transformers@v4.36.2
-site_pkg_path=$(python -c 'import site; print(site.getsitepackages()[0])')
-cp -rv ./llava/train/transformers_replace/* $site_pkg_path/transformers/
-cd $ROOT_DIR
-pip install -e .
-```
-
-### example cmd
-```bash
-python scripts/vila/inference/server_vlm.py --model_path memmelma/vila_3b_blocks_path_mask_fast
-```
-
-# real robot - Franka
-
-### install controller (Markus' robits)
-```bash
-ROOT_DIR=$(pwd)
-cd third_party/robtis_fork
-pip install -e .
-cd $ROOT_DIR
-```
-
-### install robot env and perception
-```bash
-ROOT_DIR=$(pwd)
-cd third_party/franka_sim2real
-pip install -e .
-cd $ROOT_DIR
-```
+## 🙏 Acknowledgements
+- [3d diffuser actor](https://github.com/nickgkan/3d_diffuser_actor)
+- [mink](https://github.com/kevinzakka/mink)
+- [robomimic](https://github.com/ARISE-Initiative/robomimic)

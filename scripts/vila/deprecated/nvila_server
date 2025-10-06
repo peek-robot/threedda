@@ -1,7 +1,0 @@
-# server
-cd /lustre/fs12/portfolios/nvr/users/mmemmel/projects/vila/NVILA
-python serving/server.py --port 8001 --model-path Efficient-Large-Model/NVILA-8B --conv-mode auto
-
-# inference
-python /lustre/fs12/portfolios/nvr/users/mmemmel/projects/vila/vila_3b_inference_example.py --image /lustre/fs12/portfolios/nvr/users/mmemmel/projects/vila/IMG_2848.jpg --quest "swipe the mug to the left" --prompt_type path_mask
-
