@@ -4,8 +4,8 @@
 
 ### Setup the repository and conda env
 ```bash
-git clone https://github.com/memmelma/problem_reduction.git
-cd problem_reduction
+git clone https://github.com/peek-robot/threedda.git
+cd threedda
 git submodule update --init --recursive
 
 conda create -n threedda python=3.10
